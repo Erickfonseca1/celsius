@@ -1,3 +1,4 @@
+import AppKit
 import CelsiusCore
 import ServiceManagement
 import SwiftUI
@@ -63,6 +64,12 @@ struct SettingsView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
                             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardStroke))
                             .onSubmit(connect)
+                        Button(action: pasteToken) {
+                            Image(systemName: "doc.on.clipboard")
+                        }
+                        .help("Paste the token from the clipboard")
+                        .accessibilityLabel("Paste token")
+                        .disabled(isConnecting)
                         Button(action: connect) {
                             if isConnecting {
                                 ProgressView().controlSize(.small)
@@ -166,6 +173,11 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .card()
         }
+    }
+
+    private func pasteToken() {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        token = text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func connect() {
