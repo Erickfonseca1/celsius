@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installEditMenu()
         let store = ACStore(settings: AppSettings())
         let controller = StatusItemController(store: store)
         self.store = store
@@ -54,5 +55,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 controller.showPopover()
             }
         }
+    }
+
+    /// An accessory app has no menu bar, and without one nothing routes ⌘V, ⌘C, ⌘X, ⌘A or ⌘Z to the
+    /// focused text field. This menu is never shown; it only supplies the key equivalents.
+    private func installEditMenu() {
+        let edit = NSMenu(title: "Edit")
+        let items: [(String, Selector, String)] = [
+            ("Undo", Selector(("undo:")), "z"),
+            ("Redo", Selector(("redo:")), "Z"),
+            ("Cut", #selector(NSText.cut(_:)), "x"),
+            ("Copy", #selector(NSText.copy(_:)), "c"),
+            ("Paste", #selector(NSText.paste(_:)), "v"),
+            ("Select All", #selector(NSText.selectAll(_:)), "a"),
+        ]
+        for (index, (title, action, key)) in items.enumerated() {
+            if index == 2 { edit.addItem(.separator()) }
+            edit.addItem(withTitle: title, action: action, keyEquivalent: key)
+        }
+        let editItem = NSMenuItem()
+        editItem.submenu = edit
+        let mainMenu = NSMenu()
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
     }
 }
