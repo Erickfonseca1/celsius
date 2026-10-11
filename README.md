@@ -98,7 +98,25 @@ Celsius checks for a new version about once a day. When there is one, a blue dot
 to the download page. Download the zip and replace the app in Applications, the same as the first time.
 Your token stays in the Keychain.
 
-You can also paste the AI prompt from the install section and let the assistant do it.
+Or let an AI assistant do it. Paste this prompt into one that can run commands on your Mac, such as
+[Claude Code](https://claude.com/claude-code). It's the same prompt as the install one, and it replaces
+the old copy.
+
+```text
+Install or update the Celsius menu bar app on this Mac.
+
+1. If Celsius is running, quit it (pkill -x Celsius).
+2. Download Celsius.zip from the latest release at
+   https://github.com/gbvillarinho/celsius/releases/latest
+   (for example: gh release download --repo gbvillarinho/celsius --pattern Celsius.zip)
+3. Unzip it and move Celsius.app into /Applications, replacing any older copy.
+4. Remove the quarantine flag so macOS opens it without a warning:
+   xattr -dr com.apple.quarantine /Applications/Celsius.app
+5. Open the app.
+
+If this is a first install, tell me to paste my LG access token in the Celsius Settings screen.
+Do not ask for my token and do not run anything else.
+```
 
 macOS may ask for your Keychain password once after an update, so the new copy can read your token.
 Click Always Allow. If the app says it has no token, paste it again in Settings.
