@@ -38,6 +38,12 @@ public final class ACStore {
     public static let overrideLifetime: TimeInterval = 8
     public static let visibleInterval: Duration = .seconds(20)
     public static let backgroundInterval: Duration = .seconds(300)
+    /// How long the −/+ buttons wait for the value to settle before sending it.
+    static let stepDebounce: Duration = .milliseconds(700)
+    /// When to read the state back after a command, to confirm it (or recover from a failure).
+    static let refreshAfterSend: Duration = .seconds(3)
+    static let refreshAfterFailure: Duration = .seconds(1)
+    static let messageDuration: Duration = .seconds(4)
 
     @ObservationIgnored private let settings: SettingsStorage
     @ObservationIgnored private let makeClient: (String, String) -> ThinQClient
@@ -138,11 +144,7 @@ public final class ACStore {
     /// Saves a new token and connects to the first air conditioner on the account.
     public func connect(token: String) async {
         settings.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        settings.deviceID = nil
-        device = nil
-        serverStatus = nil
-        overrides = [:]
-        capabilitiesLoaded = false
+        forgetDevice()
         connection = .loading
         await refresh()
         if isActive { startPolling(immediately: false) }
@@ -150,12 +152,17 @@ public final class ACStore {
 
     public func signOut() {
         settings.token = nil
+        forgetDevice()
+        queue = []
+        connection = .needsSetup
+    }
+
+    private func forgetDevice() {
         settings.deviceID = nil
         device = nil
         serverStatus = nil
         overrides = [:]
-        queue = []
-        connection = .needsSetup
+        capabilitiesLoaded = false
     }
 
     // MARK: Refresh
@@ -181,12 +188,8 @@ public final class ACStore {
             serverStatus = status
             pruneOverrides()
             connection = status.hasError ? .deviceError : .connected
-        } catch is CancellationError {
-            return
-        } catch let error as ThinQError {
-            handle(error)
         } catch {
-            handle(.network(error.localizedDescription))
+            handle(error)
         }
     }
 
@@ -211,11 +214,11 @@ public final class ACStore {
         }
     }
 
-    private func scheduleRefresh(after seconds: Double) {
+    private func scheduleRefresh(after delay: Duration) {
         guard !isPreview else { return }
         refreshSoonTask?.cancel()
         refreshSoonTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(seconds))
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self?.refresh()
         }
@@ -244,7 +247,7 @@ public final class ACStore {
         overrides[.target] = Override(command: command, expires: now().addingTimeInterval(Self.overrideLifetime + 1))
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(700))
+            try? await Task.sleep(for: Self.stepDebounce)
             guard !Task.isCancelled, let self else { return }
             self.overrides[.target]?.expires = self.now().addingTimeInterval(Self.overrideLifetime)
             self.enqueue(command)
@@ -277,17 +280,19 @@ public final class ACStore {
             if overrides[command.field]?.command == command {
                 overrides[command.field]?.expires = now().addingTimeInterval(Self.overrideLifetime)
             }
-            scheduleRefresh(after: 3)
+            scheduleRefresh(after: Self.refreshAfterSend)
         } catch {
             if overrides[command.field]?.command == command {
                 overrides[command.field] = nil
             }
-            handle(error as? ThinQError ?? .network(error.localizedDescription))
-            scheduleRefresh(after: 1)
+            handle(error)
+            scheduleRefresh(after: Self.refreshAfterFailure)
         }
     }
 
-    private func handle(_ error: ThinQError) {
+    private func handle(_ error: any Error) {
+        if error is CancellationError { return }
+        let error = error as? ThinQError ?? .network(error.localizedDescription)
         switch error {
         case .unauthorized:
             connection = .unauthorized
@@ -303,7 +308,7 @@ public final class ACStore {
         transientMessage = message
         messageTask?.cancel()
         messageTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(4))
+            try? await Task.sleep(for: Self.messageDuration)
             guard !Task.isCancelled else { return }
             self?.transientMessage = nil
         }

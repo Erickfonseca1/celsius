@@ -9,6 +9,11 @@ enum Theme {
     static let secondaryText = Color.white.opacity(0.55)
     static let disabledOpacity = 0.4
 
+    static let accent = Color(red: 0.55, green: 0.80, blue: 1.00)
+    static let warning = Color.orange
+    static let ecoGreen = Color(red: 0.55, green: 0.85, blue: 0.60)
+    static let toggleOn = Color(red: 0.42, green: 0.78, blue: 0.52)
+
     static let warmFill = LinearGradient(
         colors: [Color(red: 0.24, green: 0.22, blue: 0.20), Color(red: 0.62, green: 0.56, blue: 0.50)],
         startPoint: .leading, endPoint: .trailing
@@ -17,12 +22,21 @@ enum Theme {
     /// Accent for the airflow and glow, per job mode.
     static func modeColor(_ mode: String?) -> Color {
         switch mode {
-        case ACMode.cool: Color(red: 0.55, green: 0.80, blue: 1.00)
+        case ACMode.cool: accent
         case ACMode.dry: Color(red: 0.49, green: 0.88, blue: 0.76)
         case ACMode.auto: Color(red: 0.73, green: 0.69, blue: 1.00)
         case ACMode.heat: Color(red: 1.00, green: 0.66, blue: 0.40)
         default: Color(white: 0.92)
         }
+    }
+}
+
+extension View {
+    /// The translucent rounded card used for tiles and settings sections.
+    func card(cornerRadius: CGFloat = Theme.cardRadius) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        return background(shape.fill(Theme.cardFill))
+            .overlay(shape.strokeBorder(Theme.cardStroke))
     }
 }
 

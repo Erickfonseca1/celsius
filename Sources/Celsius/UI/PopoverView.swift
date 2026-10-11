@@ -2,7 +2,7 @@ import CelsiusCore
 import SwiftUI
 
 struct PopoverView: View {
-    @Bindable var store: ACStore
+    var store: ACStore
     /// Freezes the animation clock, for snapshots.
     var fixedDate: Date?
 
@@ -181,13 +181,11 @@ struct PopoverView: View {
     }
 
     private var sleepOptions: [MenuOption] {
-        let left = status?.sleepMinutesLeft
-        var options = [MenuOption(title: "Off", isSelected: left == nil) { store.perform(.sleep(hours: 0)) }]
-        for hours in 1...7 {
-            let selected = left.map { $0 > (hours - 1) * 60 && $0 <= hours * 60 } ?? false
-            options.append(MenuOption(title: "\(hours) h", isSelected: selected) { store.perform(.sleep(hours: hours)) })
+        let selected = status?.sleepTimerHours
+        let off = MenuOption(title: "Off", isSelected: selected == nil) { store.perform(.sleep(hours: 0)) }
+        return [off] + (1...7).map { hours in
+            MenuOption(title: "\(hours) h", isSelected: selected == hours) { store.perform(.sleep(hours: hours)) }
         }
-        return options
     }
 
     private var footer: some View {
@@ -208,45 +206,5 @@ struct PopoverView: View {
             .help("Settings")
         }
         .padding(.top, 2)
-    }
-}
-
-struct FooterStatus: View {
-    var store: ACStore
-
-    var body: some View {
-        let (icon, text, color) = describe()
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-            Text(text)
-                .foregroundStyle(Theme.secondaryText)
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
-        .font(.system(size: 12))
-        .animation(.easeInOut(duration: 0.2), value: text)
-    }
-
-    private func describe() -> (String, String, Color) {
-        if let message = store.transientMessage {
-            return ("exclamationmark.triangle", message, .orange)
-        }
-        switch store.connection {
-        case .connected where store.isSending:
-            return ("arrow.triangle.2.circlepath", "Updating…", Theme.secondaryText)
-        case .connected:
-            return ("checkmark.shield", "Connected", Theme.secondaryText)
-        case .loading:
-            return ("arrow.triangle.2.circlepath", "Connecting…", Theme.secondaryText)
-        case .offline(let message):
-            return ("wifi.slash", message, .orange)
-        case .unauthorized:
-            return ("key", "Sign in required", .orange)
-        case .deviceError:
-            return ("exclamationmark.triangle", "The unit reports an error", .orange)
-        case .needsSetup:
-            return ("key", "Add your LG token", Theme.secondaryText)
-        }
     }
 }

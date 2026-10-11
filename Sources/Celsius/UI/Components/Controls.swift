@@ -31,7 +31,7 @@ struct PillToggle: View {
     var body: some View {
         Button(action: action) {
             Capsule()
-                .fill(isOn ? Color(red: 0.42, green: 0.78, blue: 0.52) : Color.white.opacity(0.14))
+                .fill(isOn ? Theme.toggleOn : Color.white.opacity(0.14))
                 .frame(width: 44, height: 24)
                 .overlay(alignment: isOn ? .trailing : .leading) {
                     Circle()
@@ -55,15 +55,14 @@ struct EcoToggleCard: View {
         HStack(spacing: 10) {
             Image(systemName: "leaf")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(isOn ? Color(red: 0.55, green: 0.85, blue: 0.6) : Theme.secondaryText)
+                .foregroundStyle(isOn ? Theme.ecoGreen : Theme.secondaryText)
             Text("Eco Mode")
                 .font(.system(size: 13, weight: .semibold))
             PillToggle(isOn: isOn, action: action)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardFill))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.cardStroke))
+        .card(cornerRadius: 12)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Eco Mode")
         .accessibilityValue(isOn ? "On" : "Off")
@@ -128,7 +127,7 @@ struct ControlTile: View {
                             .foregroundStyle(Theme.secondaryText)
                     case .dot(let active):
                         Circle()
-                            .fill(active ? Color(red: 0.55, green: 0.8, blue: 1) : Color.white.opacity(0.3))
+                            .fill(active ? Theme.accent : Color.white.opacity(0.3))
                             .frame(width: 6, height: 6)
                             .padding(.top, 3)
                     }
@@ -145,8 +144,7 @@ struct ControlTile: View {
             }
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.cardFill))
-            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Theme.cardStroke))
+            .card()
             .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         }
         .buttonStyle(TilePressStyle())

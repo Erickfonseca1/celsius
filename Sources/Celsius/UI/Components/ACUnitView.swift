@@ -24,6 +24,7 @@ struct ACUnitView: View {
 
     private let bodySize = CGSize(width: 206, height: 64)
     private let height: CGFloat = 168
+    private static let lingerDuration: Duration = .seconds(2.6)
 
     private var style: AirflowStyle { .make(fanSpeed: fanSpeed, sleeping: sleeping) }
     private var accent: Color { Theme.modeColor(mode) }
@@ -46,13 +47,16 @@ struct ACUnitView: View {
         .frame(height: height)
         .onChange(of: isOn) { _, on in
             powerChangedAt = Date()
-            if !on {
-                lingering = true
-                Task {
-                    try? await Task.sleep(for: .seconds(2.6))
-                    lingering = false
-                }
-            }
+            lingering = !on
+        }
+        // Keeps the timeline running while the last streaks leave the vent. Restarted (and the old
+        // wait cancelled) on every power change, so a quick off → on → off doesn't cut the air short.
+        .task(id: isOn) {
+            guard lingering else { return }
+            do {
+                try await Task.sleep(for: Self.lingerDuration)
+                lingering = false
+            } catch {}
         }
         .onChange(of: style.cyclesPerSecond) { _, speed in
             clock.change(speed: speed, at: Date())

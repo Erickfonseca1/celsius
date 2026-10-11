@@ -12,6 +12,8 @@ struct SettingsView: View {
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
+    private static let tokenPortal = URL(string: "https://connect-pat.lgthinq.com")!
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
@@ -74,14 +76,14 @@ struct SettingsView: View {
                     if case .unauthorized = store.connection {
                         Label("LG rejected this token. Create a new one and paste it here.", systemImage: "exclamationmark.triangle")
                             .font(.system(size: 11))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Theme.warning)
                     }
 
-                    Link(destination: URL(string: "https://connect-pat.lgthinq.com")!) {
+                    Link(destination: Self.tokenPortal) {
                         Label("Create a token at connect-pat.lgthinq.com", systemImage: "arrow.up.right.square")
                             .font(.system(size: 12))
                     }
-                    .foregroundStyle(Color(red: 0.55, green: 0.8, blue: 1))
+                    .foregroundStyle(Theme.accent)
                 }
             }
 
@@ -95,7 +97,7 @@ struct SettingsView: View {
                     if let loginError {
                         Text(loginError)
                             .font(.system(size: 11))
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(Theme.warning)
                     }
                 }
             }
@@ -125,8 +127,7 @@ struct SettingsView: View {
             content()
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.cardFill))
-                .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Theme.cardStroke))
+                .card()
         }
     }
 

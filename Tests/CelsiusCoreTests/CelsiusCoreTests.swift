@@ -109,6 +109,11 @@ private func json(_ data: Data?) throws -> JSONValue {
         #expect(status.applying(.sleep(hours: 3)).sleepMinutesLeft == 180)
         #expect(status.applying(.sleep(hours: 0)).sleepMinutesLeft == nil)
     }
+
+    @Test(arguments: [(nil, nil), (1, 1), (60, 1), (61, 2), (95, 2), (120, 2), (121, 3)] as [(Int?, Int?)])
+    func sleepTimerHoursRoundsUp(minutesLeft: Int?, hours: Int?) {
+        #expect(ACStatus(isOn: true, sleepMinutesLeft: minutesLeft).sleepTimerHours == hours)
+    }
 }
 
 // MARK: - HTTP client

@@ -99,6 +99,13 @@ public struct ACStatus: Sendable, Equatable {
         hasError = json["runState"]?["currentState"]?.string == "ERROR"
     }
 
+    /// The whole-hour timer that a running countdown belongs to: 95 minutes left reads as the 2 h timer.
+    /// The device counts down from the moment it accepts the timer, so the minutes left never match the
+    /// request exactly.
+    public var sleepTimerHours: Int? {
+        sleepMinutesLeft.map { ($0 + 59) / 60 }
+    }
+
     /// The state the unit is expected to reach once `command` is applied.
     public func applying(_ command: ACCommand) -> ACStatus {
         var copy = self
@@ -110,13 +117,10 @@ public struct ACStatus: Sendable, Equatable {
         case .swing(let on): copy.swing = on
         case .eco(let on): copy.eco = on
         case .sleep(let hours):
-            // The device counts down from the moment it accepts the timer, so a running timer
-            // is confirmed by any value within the hour that was requested.
+            // A running timer within the requested hour already confirms the command.
             if hours == 0 {
                 copy.sleepMinutesLeft = nil
-            } else if let left = sleepMinutesLeft, left > (hours - 1) * 60, left <= hours * 60 {
-                copy.sleepMinutesLeft = left
-            } else {
+            } else if sleepTimerHours != hours {
                 copy.sleepMinutesLeft = hours * 60
             }
         }
