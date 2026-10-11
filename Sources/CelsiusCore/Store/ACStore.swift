@@ -159,7 +159,13 @@ public final class ACStore {
 
     /// Saves a new token and connects to the first air conditioner on the account.
     public func connect(token: String) async {
-        settings.token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.token = token
+        guard settings.token == token else {
+            connection = .needsSetup
+            showMessage("Couldn't save the token in the keychain")
+            return
+        }
         forgetDevice()
         connection = .loading
         await refresh()

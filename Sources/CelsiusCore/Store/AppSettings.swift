@@ -33,6 +33,8 @@ public enum Keychain {
             var item = query
             item[kSecValueData as String] = data
             item[kSecAttrLabel as String] = "Celsius – LG ThinQ token"
+            // Keep the token on this Mac: no iCloud Keychain sync, no backups.
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
         }
         return status == errSecSuccess
