@@ -9,17 +9,13 @@ enum Theme {
     static let secondaryText = Color.white.opacity(0.55)
     static let disabledOpacity = 0.4
 
-    static let accent = Color(red: 0.55, green: 0.80, blue: 1.00)
+    /// The accent color chosen in System Settings (or an ancestor's `.tint`), like native controls use.
+    static let accent = Color.accentColor
     static let warning = Color.orange
     static let ecoGreen = Color(red: 0.55, green: 0.85, blue: 0.60)
-    static let toggleOn = Color(red: 0.42, green: 0.78, blue: 0.52)
 
-    static let warmFill = LinearGradient(
-        colors: [Color(red: 0.24, green: 0.22, blue: 0.20), Color(red: 0.62, green: 0.56, blue: 0.50)],
-        startPoint: .leading, endPoint: .trailing
-    )
-
-    /// Accent for the airflow and glow, per job mode.
+    /// Accent for the power button, slider, airflow and glow, per job mode. Cooling, the default,
+    /// follows the system accent; the other modes keep their own hue so they stay recognizable.
     static func modeColor(_ mode: String?) -> Color {
         switch mode {
         case ACMode.cool: accent

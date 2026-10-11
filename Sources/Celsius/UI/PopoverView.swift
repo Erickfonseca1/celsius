@@ -54,7 +54,7 @@ struct PopoverView: View {
                 bigTemperature
                 Spacer()
                 if caps.supportsEco {
-                    EcoToggleCard(isOn: status?.eco ?? false) {
+                    EcoToggle(isOn: status?.eco ?? false) {
                         store.perform(.eco(!(status?.eco ?? false)))
                     }
                     .disabled(!isOn)
@@ -119,6 +119,7 @@ struct PopoverView: View {
             value: status?.targetTemperature ?? caps.minTemperature,
             range: caps.minTemperature...caps.maxTemperature,
             step: caps.temperatureStep,
+            accent: Theme.modeColor(status?.mode),
             onChange: { draggingTarget = $0 },
             onCommit: { value in
                 draggingTarget = nil
@@ -134,50 +135,57 @@ struct PopoverView: View {
     }
 
     private var tiles: some View {
-        HStack(spacing: 8) {
-            ControlTile(
-                systemImage: Labels.modeIcon(status?.mode),
-                title: "Mode",
-                value: Labels.mode(status?.mode),
-                options: caps.modes.map { mode in
-                    MenuOption(title: Labels.mode(mode), systemImage: Labels.modeIcon(mode), isSelected: mode == status?.mode) {
-                        store.perform(.mode(mode))
-                    }
-                }
-            )
-            ControlTile(
-                systemImage: "fan",
-                title: "Fan speed",
-                value: Labels.fan(status?.fanSpeed),
-                options: caps.fanSpeeds.map { speed in
-                    MenuOption(title: Labels.fan(speed), isSelected: speed == status?.fanSpeed) {
-                        store.perform(.fanSpeed(speed))
-                    }
-                }
-            )
-            if caps.supportsSleep {
+        VStack(spacing: 10) {
+            modePicker
+            HStack(spacing: 8) {
                 ControlTile(
-                    systemImage: "moon",
-                    title: "Sleep",
-                    value: Labels.sleep(status?.sleepMinutesLeft),
-                    accessory: .dot(active: status?.sleepMinutesLeft != nil),
-                    options: sleepOptions
+                    systemImage: "fan",
+                    title: "Fan speed",
+                    value: Labels.fan(status?.fanSpeed),
+                    options: caps.fanSpeeds.map { speed in
+                        MenuOption(title: Labels.fan(speed), isSelected: speed == status?.fanSpeed) {
+                            store.perform(.fanSpeed(speed))
+                        }
+                    }
                 )
-            }
-            if caps.supportsSwing {
-                ControlTile(
-                    systemImage: "wind",
-                    title: "Airflow",
-                    value: status?.swing == true ? "Swing" : "Fixed",
-                    options: [
-                        MenuOption(title: "Fixed", isSelected: status?.swing != true) { store.perform(.swing(false)) },
-                        MenuOption(title: "Swing", isSelected: status?.swing == true) { store.perform(.swing(true)) },
-                    ]
-                )
+                if caps.supportsSleep {
+                    ControlTile(
+                        systemImage: "moon",
+                        title: "Sleep",
+                        value: Labels.sleep(status?.sleepMinutesLeft),
+                        indicator: status?.sleepMinutesLeft != nil,
+                        options: sleepOptions
+                    )
+                }
+                if caps.supportsSwing {
+                    ControlTile(
+                        systemImage: "wind",
+                        title: "Airflow",
+                        value: status?.swing == true ? "Swing" : "Fixed",
+                        options: [
+                            MenuOption(title: "Fixed", isSelected: status?.swing != true) { store.perform(.swing(false)) },
+                            MenuOption(title: "Swing", isSelected: status?.swing == true) { store.perform(.swing(true)) },
+                        ]
+                    )
+                }
             }
         }
         .disabled(!isOn)
         .opacity(isOn ? 1 : Theme.disabledOpacity)
+    }
+
+    /// Few options, switched often: a segmented control instead of a menu.
+    private var modePicker: some View {
+        Picker("Mode", selection: Binding(
+            get: { status?.mode ?? "" },
+            set: { store.perform(.mode($0)) }
+        )) {
+            ForEach(caps.modes, id: \.self) { mode in
+                Text(Labels.mode(mode)).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     private var sleepOptions: [MenuOption] {

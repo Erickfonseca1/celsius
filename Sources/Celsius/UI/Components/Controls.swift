@@ -8,13 +8,13 @@ struct PowerButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Same language as the Eco chip: a tint of the mode color when on, muted when off.
             Image(systemName: "power")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isOn ? Color.white : Theme.secondaryText)
-                .frame(width: 38, height: 38)
-                .background(Circle().fill(Color.white.opacity(isOn ? 0.14 : 0.06)))
-                .overlay(Circle().strokeBorder(isOn ? accent.opacity(0.75) : Color.white.opacity(0.18), lineWidth: 1.2))
-                .shadow(color: isOn ? accent.opacity(0.55) : .clear, radius: 8)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(isOn ? accent : Theme.secondaryText)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(isOn ? accent.opacity(0.14) : Color.white.opacity(0.05)))
+                .overlay(Circle().strokeBorder(isOn ? accent.opacity(0.35) : Theme.cardStroke))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -24,68 +24,32 @@ struct PowerButton: View {
     }
 }
 
-struct PillToggle: View {
+/// A compact on/off chip: green leaf and tint when on, muted when off.
+struct EcoToggle: View {
     var isOn: Bool
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Capsule()
-                .fill(isOn ? Theme.toggleOn : Color.white.opacity(0.14))
-                .frame(width: 44, height: 24)
-                .overlay(alignment: isOn ? .trailing : .leading) {
-                    Circle()
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                        .padding(3)
-                }
-                .contentShape(Capsule())
+            HStack(spacing: 5) {
+                Image(systemName: isOn ? "leaf.fill" : "leaf")
+                    .contentTransition(.symbolEffect(.replace))
+                Text("Eco")
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(isOn ? Theme.ecoGreen : Theme.secondaryText)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(isOn ? Theme.ecoGreen.opacity(0.14) : Color.white.opacity(0.05)))
+            .overlay(Capsule().strokeBorder(isOn ? Theme.ecoGreen.opacity(0.35) : Theme.cardStroke))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .animation(.spring(response: 0.3, dampingFraction: 0.75), value: isOn)
-        .accessibilityAddTraits(isOn ? [.isSelected] : [])
-    }
-}
-
-struct EcoToggleCard: View {
-    var isOn: Bool
-    var action: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "leaf")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(isOn ? Theme.ecoGreen : Theme.secondaryText)
-            Text("Eco Mode")
-                .font(.system(size: 13, weight: .semibold))
-            PillToggle(isOn: isOn, action: action)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .card(cornerRadius: 12)
-        .accessibilityElement(children: .combine)
+        .animation(.easeInOut(duration: 0.2), value: isOn)
         .accessibilityLabel("Eco Mode")
         .accessibilityValue(isOn ? "On" : "Off")
-        .accessibilityAction { action() }
-    }
-}
-
-struct CircleIconButton: View {
-    var systemName: String
-    var label: String
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 36, height: 36)
-                .background(Circle().fill(Color.white.opacity(0.08)))
-                .overlay(Circle().strokeBorder(Theme.cardStroke))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+        .help(isOn ? "Turn off Eco Mode" : "Turn on Eco Mode")
     }
 }
 
@@ -102,13 +66,9 @@ struct ControlTile: View {
     var systemImage: String
     var title: String
     var value: String
-    var accessory: Accessory = .chevron
+    /// A status dot in the corner (e.g. a running timer); `nil` shows none.
+    var indicator: Bool? = nil
     var options: [MenuOption]
-
-    enum Accessory {
-        case chevron
-        case dot(active: Bool)
-    }
 
     var body: some View {
         Button {
@@ -120,14 +80,9 @@ struct ControlTile: View {
                         .font(.system(size: 19, weight: .regular))
                         .frame(height: 22)
                     Spacer(minLength: 4)
-                    switch accessory {
-                    case .chevron:
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Theme.secondaryText)
-                    case .dot(let active):
+                    if let indicator {
                         Circle()
-                            .fill(active ? Theme.accent : Color.white.opacity(0.3))
+                            .fill(indicator ? Theme.accent : Color.white.opacity(0.3))
                             .frame(width: 6, height: 6)
                             .padding(.top, 3)
                     }
@@ -136,11 +91,17 @@ struct ControlTile: View {
                 Text(title)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.secondaryText)
-                Text(value)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .contentTransition(.interpolate)
+                // The Mac pop-up menu affordance: up/down chevrons right after the value.
+                HStack(spacing: 4) {
+                    Text(value)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .contentTransition(.interpolate)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .font(.system(size: 13, weight: .semibold))
             }
             .padding(11)
             .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
