@@ -26,7 +26,9 @@ enum DevTools {
         ]
         for (name, status, connection) in scenarios {
             let store = ACStore(previewStatus: status, capabilities: caps, connection: connection)
-            render(PopoverView(store: store, fixedDate: date), to: directory.appendingPathComponent("\(name).png"))
+            let popover = PopoverView(store: store, fixedDate: date)
+            render(popover, to: directory.appendingPathComponent("\(name).png"))
+            renderNative(popover, to: directory.appendingPathComponent("\(name)-native.png"))
         }
 
         // Airflow frames over time.
@@ -55,6 +57,8 @@ enum DevTools {
         }
     }
 
+    /// Faithful for SwiftUI drawing (transforms, canvas), but AppKit-backed controls (switches,
+    /// pop-up buttons, segmented controls, text fields) come out as placeholders.
     private static func render<V: View>(_ view: V, to url: URL) {
         let root = view
             .background(Color(white: 0.11))
@@ -63,6 +67,20 @@ enum DevTools {
         renderer.scale = 2
         guard let image = renderer.cgImage else { return }
         let rep = NSBitmapImageRep(cgImage: image)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    /// Draws through an offscreen window so native controls render, at the cost of scale/3D
+    /// transforms (the unit illustration lands out of place) and an inactive-window look.
+    private static func renderNative<V: View>(_ view: V, to url: URL) {
+        let host = NSHostingView(rootView: view.background(Color(white: 0.11)))
+        host.frame = CGRect(origin: .zero, size: host.fittingSize)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+        host.cacheDisplay(in: host.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 }
