@@ -25,6 +25,8 @@ There are no SwiftUI previews. After changing the UI, render snapshots and look 
 $(swift build --show-bin-path)/Celsius --snapshot <dir>   # popover in fixed states + airflow frames, no network
 ```
 
+Each popover state is written twice: `<name>.png` (`ImageRenderer`, faithful for custom drawing but native AppKit controls show as yellow placeholders) and `<name>-native.png` (offscreen `NSHostingView`, shows switches, pop-ups and segmented controls, but drops scale/3D transforms and looks like an inactive window). Check custom drawing in the first and native controls in the second.
+
 Snapshot rendering is not fully byte-deterministic (blur and gradients vary by 1–3/255 per channel), so compare images visually or with a tolerance, not with `cmp`.
 
 Runtime env vars: `CELSIUS_PAT` (use this token instead of the keychain), `CELSIUS_OPEN_ON_LAUNCH=1` (open the popover on launch), `CELSIUS_LIVE_SNAPSHOT=<file.png>` (render the popover once live data loads).
@@ -62,11 +64,12 @@ There are two targets with a strict split:
 
 ### UI conventions
 
-- The popover is dark-only, fixed width, with design tokens (colors, radii, opacities) and a shared `.card()` modifier in the theme. Use tokens instead of color or size literals, and keep API-value → label/icon mapping in the labels helper.
+- The popover is dark-only and fixed width, with design tokens (colors, radii, opacities) and a shared `.card()` modifier (used by Settings) in the theme. Accents follow the system accent color. Use tokens instead of color or size literals, and keep API-value → label/icon mapping in the labels helper.
 - Animated drawing is a pure function of time. `TimelineView` + `Canvas` with a renderer struct that takes the date, so snapshots can freeze time via a `fixedDate` input. The timeline pauses when the popover is hidden or motion isn't needed, and respects Reduce Motion.
 - Speed changes in the airflow keep phase continuity through an anchor/phase clock instead of restarting.
 - Delayed view-local state changes use `.task(id:)`, so the previous wait is cancelled; avoid detached `Task {}` sleeps in `onChange`.
-- The tile menus use a native `NSMenu` popped at the mouse location, because SwiftUI `Menu` flattens custom labels on macOS.
+- The main screen follows macOS Control Center: native switch, segmented control and pop-up buttons, Control Center–style round toggles, and a menu-item row for settings. Prefer native controls over custom-drawn ones.
+- SwiftUI's menu `Picker` sizes itself to its longest option and ignores `.frame(width:)`, so pop-ups that must line up use the `NSPopUpButton` wrapper, which honors the proposed width.
 
 ## Agents and skills
 

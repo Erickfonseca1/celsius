@@ -21,7 +21,7 @@ struct PopoverView: View {
                     .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .padding(18)
+        .padding(14)
         .frame(width: Theme.popoverWidth)
         .foregroundStyle(.white)
         .environment(\.colorScheme, .dark)
@@ -35,57 +35,54 @@ struct PopoverView: View {
     private var caps: ACCapabilities { store.capabilities }
 
     private var controls: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             header
-            ACUnitView(
-                isOn: isOn,
-                mode: status?.mode,
-                fanSpeed: status?.fanSpeed,
-                swing: status?.swing ?? false,
-                sleeping: status?.sleepMinutesLeft != nil,
-                target: draggingTarget ?? status?.targetTemperature,
-                isVisible: store.isPopoverVisible || fixedDate != nil,
-                fixedDate: fixedDate
-            )
-            .padding(.top, -6)
-            .padding(.bottom, -26)
-
-            HStack(alignment: .center) {
-                bigTemperature
-                Spacer()
-                if caps.supportsEco {
-                    EcoToggle(isOn: status?.eco ?? false) {
-                        store.perform(.eco(!(status?.eco ?? false)))
+            Divider()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        bigTemperature
+                        Text(Labels.activity(status, target: draggingTarget ?? status?.targetTemperature))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .contentTransition(.interpolate)
                     }
-                    .disabled(!isOn)
-                    .opacity(isOn ? 1 : Theme.disabledOpacity)
+                    Spacer()
+                    miniUnit
                 }
+                temperatureSlider
             }
-
-            temperatureSlider
-            tiles
-            footer
+            Divider()
+            settingsRows
+            Divider()
+            toggleRows
+            Divider()
+            MenuRow(title: "Air conditioner settings…") { showingSettings = true }
         }
         .redacted(reason: status == nil ? .placeholder : [])
     }
 
+    /// Device name and power, with the room temperature below (or what's wrong, when something is).
     private var header: some View {
-        HStack {
-            Image(systemName: "thermometer.medium")
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.secondaryText)
-            Text("Room")
-                .foregroundStyle(Theme.secondaryText)
-            Text(status?.currentTemperature.map { "\(Labels.temperature($0))°C" } ?? "—")
-                .fontWeight(.semibold)
-                .contentTransition(.numericText())
-            Spacer()
-            PowerButton(isOn: isOn, accent: Theme.modeColor(status?.mode)) {
-                store.perform(.power(!isOn))
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(store.device?.displayName ?? "Air conditioner")
+                    .font(.system(size: 13, weight: .semibold))
+                if store.transientMessage != nil || store.connection != .connected {
+                    FooterStatus(store: store)
+                } else {
+                    Text("Room · \(Labels.temperature(status?.currentTemperature)) °C")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.secondaryText)
+                        .contentTransition(.numericText())
+                }
             }
-            .disabled(status == nil)
+            Spacer()
+            Toggle("Power", isOn: Binding(get: { isOn }, set: { store.perform(.power($0)) }))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .disabled(status == nil)
         }
-        .font(.system(size: 13))
     }
 
     private var bigTemperature: some View {
@@ -94,14 +91,14 @@ struct PopoverView: View {
         let half = value.map { $0.rounded(.down) != $0 } ?? false
         return HStack(alignment: .firstTextBaseline, spacing: 2) {
             Text(whole)
-                .font(.system(size: 54, weight: .medium))
+                .font(.system(size: 44, weight: .medium))
                 .contentTransition(.numericText(value: value ?? 0))
             if half {
                 Text(".5")
-                    .font(.system(size: 26, weight: .medium))
+                    .font(.system(size: 22, weight: .medium))
             }
             Text("°C")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(Theme.secondaryText)
         }
         .monospacedDigit()
@@ -110,6 +107,27 @@ struct PopoverView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Target temperature \(Labels.temperature(value)) degrees")
     }
+
+    /// The animated unit, drawn at full size and scaled down to sit beside the temperature.
+    private var miniUnit: some View {
+        ACUnitView(
+            isOn: isOn,
+            mode: status?.mode,
+            fanSpeed: status?.fanSpeed,
+            swing: status?.swing ?? false,
+            sleeping: status?.sleepMinutesLeft != nil,
+            target: draggingTarget ?? status?.targetTemperature,
+            isVisible: store.isPopoverVisible || fixedDate != nil,
+            fixedDate: fixedDate
+        )
+        .frame(width: 240)
+        .scaleEffect(Self.miniUnitScale, anchor: .topLeading)
+        .frame(width: 240 * Self.miniUnitScale, height: ACUnitView.height * Self.miniUnitScale, alignment: .topLeading)
+    }
+
+    private static let miniUnitScale: CGFloat = 0.55
+    /// Shared by every pop-up button so they line up regardless of the selected value.
+    private static let popUpWidth: CGFloat = 96
 
     private var temperatureEditable: Bool { ACMode.acceptsTargetTemperature(status?.mode) }
 
@@ -134,85 +152,61 @@ struct PopoverView: View {
         .opacity(enabled ? 1 : Theme.disabledOpacity)
     }
 
-    private var tiles: some View {
-        VStack(spacing: 10) {
-            modePicker
-            HStack(spacing: 8) {
-                ControlTile(
-                    systemImage: "fan",
-                    title: "Fan speed",
-                    value: Labels.fan(status?.fanSpeed),
-                    options: caps.fanSpeeds.map { speed in
-                        MenuOption(title: Labels.fan(speed), isSelected: speed == status?.fanSpeed) {
-                            store.perform(.fanSpeed(speed))
-                        }
-                    }
+    /// Mode as a segmented control, then fan speed and airflow as native pop-up buttons.
+    private var settingsRows: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Mode")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.secondaryText)
+            Picker("Mode", selection: Binding(get: { status?.mode ?? "" }, set: { store.perform(.mode($0)) })) {
+                ForEach(caps.modes, id: \.self) { mode in
+                    Text(Labels.mode(mode)).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .padding(.bottom, 2)
+
+            pickerRow(
+                "Fan speed",
+                options: caps.fanSpeeds.map { (Labels.fan($0), $0) },
+                selection: Binding(get: { status?.fanSpeed ?? "" }, set: { store.perform(.fanSpeed($0)) })
+            )
+            if caps.supportsSwing {
+                pickerRow(
+                    "Airflow",
+                    options: [("Fixed", false), ("Swing", true)],
+                    selection: Binding(get: { status?.swing ?? false }, set: { store.perform(.swing($0)) })
                 )
-                if caps.supportsSleep {
-                    ControlTile(
-                        systemImage: "moon",
-                        title: "Sleep",
-                        value: Labels.sleep(status?.sleepMinutesLeft),
-                        indicator: status?.sleepMinutesLeft != nil,
-                        options: sleepOptions
-                    )
-                }
-                if caps.supportsSwing {
-                    ControlTile(
-                        systemImage: "wind",
-                        title: "Airflow",
-                        value: status?.swing == true ? "Swing" : "Fixed",
-                        options: [
-                            MenuOption(title: "Fixed", isSelected: status?.swing != true) { store.perform(.swing(false)) },
-                            MenuOption(title: "Swing", isSelected: status?.swing == true) { store.perform(.swing(true)) },
-                        ]
-                    )
-                }
             }
         }
         .disabled(!isOn)
         .opacity(isOn ? 1 : Theme.disabledOpacity)
     }
 
-    /// Few options, switched often: a segmented control instead of a menu.
-    private var modePicker: some View {
-        Picker("Mode", selection: Binding(
-            get: { status?.mode ?? "" },
-            set: { store.perform(.mode($0)) }
-        )) {
-            ForEach(caps.modes, id: \.self) { mode in
-                Text(Labels.mode(mode)).tag(mode)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-    }
-
-    private var sleepOptions: [MenuOption] {
-        let selected = status?.sleepTimerHours
-        let off = MenuOption(title: "Off", isSelected: selected == nil) { store.perform(.sleep(hours: 0)) }
-        return [off] + (1...7).map { hours in
-            MenuOption(title: "\(hours) h", isSelected: selected == hours) { store.perform(.sleep(hours: hours)) }
-        }
-    }
-
-    private var footer: some View {
-        HStack(spacing: 6) {
-            FooterStatus(store: store)
+    private func pickerRow<Value: Hashable>(
+        _ title: String, options: [(title: String, value: Value)], selection: Binding<Value>
+    ) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 13))
             Spacer()
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(width: 26, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Settings")
-            .help("Settings")
+            PopUpButton(options: options, selection: selection)
+                .frame(width: Self.popUpWidth)
+                .accessibilityLabel(title)
         }
-        .padding(.top, 2)
+    }
+
+    private var toggleRows: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if caps.supportsEco {
+                CircleToggleRow(systemImage: "leaf", title: "Eco mode", isOn: status?.eco == true) {
+                    store.perform(.eco(status?.eco != true))
+                }
+            }
+        }
+        .disabled(!isOn)
+        .opacity(isOn ? 1 : Theme.disabledOpacity)
     }
 }

@@ -23,7 +23,7 @@ struct ACUnitView: View {
     @State private var clock = FlowClock()
 
     private let bodySize = CGSize(width: 206, height: 64)
-    private let height: CGFloat = 168
+    static let height: CGFloat = 168
     private static let lingerDuration: Duration = .seconds(2.6)
 
     private var style: AirflowStyle { .make(fanSpeed: fanSpeed, sleeping: sleeping) }
@@ -44,7 +44,7 @@ struct ACUnitView: View {
             }
             .frame(maxWidth: .infinity)
         }
-        .frame(height: height)
+        .frame(height: Self.height)
         .onChange(of: isOn) { _, on in
             powerChangedAt = Date()
             lingering = !on
@@ -95,7 +95,7 @@ struct ACUnitView: View {
             )
             renderer.draw(&context, size: size)
         }
-        .frame(height: height - bodySize.height)
+        .frame(height: Self.height - bodySize.height)
         .allowsHitTesting(false)
     }
 

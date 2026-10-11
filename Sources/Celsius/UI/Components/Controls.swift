@@ -1,153 +1,100 @@
 import AppKit
 import SwiftUI
 
-struct PowerButton: View {
-    var isOn: Bool
-    var accent: Color
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            // Same language as the Eco chip: a tint of the mode color when on, muted when off.
-            Image(systemName: "power")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(isOn ? accent : Theme.secondaryText)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(isOn ? accent.opacity(0.14) : Color.white.opacity(0.05)))
-                .overlay(Circle().strokeBorder(isOn ? accent.opacity(0.35) : Theme.cardStroke))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.3), value: isOn)
-        .accessibilityLabel(isOn ? "Turn off" : "Turn on")
-        .help(isOn ? "Turn off" : "Turn on")
-    }
-}
-
-/// A compact on/off chip: green leaf and tint when on, muted when off.
-struct EcoToggle: View {
+/// A Control Center–style row: a round icon that fills with the accent color when on, and a title.
+struct CircleToggleRow: View {
+    var systemImage: String
+    var title: String
     var isOn: Bool
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: isOn ? "leaf.fill" : "leaf")
-                    .contentTransition(.symbolEffect(.replace))
-                Text("Eco")
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isOn ? Color.white : Color.primary)
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(isOn ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.white.opacity(0.12))))
+                Text(title)
+                    .font(.system(size: 13))
+                Spacer()
             }
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isOn ? Theme.ecoGreen : Theme.secondaryText)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
-            .background(Capsule().fill(isOn ? Theme.ecoGreen.opacity(0.14) : Color.white.opacity(0.05)))
-            .overlay(Capsule().strokeBorder(isOn ? Theme.ecoGreen.opacity(0.35) : Theme.cardStroke))
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: isOn)
-        .accessibilityLabel("Eco Mode")
+        .accessibilityLabel(title)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityAddTraits(isOn ? [.isSelected] : [])
-        .help(isOn ? "Turn off Eco Mode" : "Turn on Eco Mode")
     }
 }
 
-/// One option in a tile's menu.
-struct MenuOption {
+/// A full-width row that reads like a menu item, highlighted on hover (e.g. "Settings…").
+struct MenuRow: View {
     var title: String
-    var systemImage: String?
-    var isSelected: Bool
     var action: () -> Void
-}
 
-/// Card with an icon, a caption and the current value. Clicking it opens a menu with the options.
-struct ControlTile: View {
-    var systemImage: String
-    var title: String
-    var value: String
-    /// A status dot in the corner (e.g. a running timer); `nil` shows none.
-    var indicator: Bool? = nil
-    var options: [MenuOption]
+    @State private var isHovered = false
 
     var body: some View {
-        Button {
-            MenuPresenter.show(options)
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .top) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 19, weight: .regular))
-                        .frame(height: 22)
-                    Spacer(minLength: 4)
-                    if let indicator {
-                        Circle()
-                            .fill(indicator ? Theme.accent : Color.white.opacity(0.3))
-                            .frame(width: 6, height: 6)
-                            .padding(.top, 3)
-                    }
-                }
-                Spacer(minLength: 10)
-                Text(title)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.secondaryText)
-                // The Mac pop-up menu affordance: up/down chevrons right after the value.
-                HStack(spacing: 4) {
-                    Text(value)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .contentTransition(.interpolate)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(Theme.secondaryText)
-                }
-                .font(.system(size: 13, weight: .semibold))
-            }
-            .padding(11)
-            .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
-            .card()
-            .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.white.opacity(isHovered ? 0.1 : 0))
+                )
+                .contentShape(Rectangle())
         }
-        .buttonStyle(TilePressStyle())
-        .accessibilityLabel(title)
-        .accessibilityValue(value)
-        .accessibilityHint("Opens options")
+        .buttonStyle(.plain)
+        .padding(.horizontal, -6)
+        .onHover { isHovered = $0 }
     }
 }
 
-struct TilePressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .brightness(configuration.isPressed ? 0.04 : 0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
+/// A native pop-up button that takes the width it's given. SwiftUI's menu `Picker` sizes itself to its
+/// longest option, so two of them side by side never line up.
+struct PopUpButton<Value: Hashable>: NSViewRepresentable {
+    var options: [(title: String, value: Value)]
+    @Binding var selection: Value
 
-/// Pops up a native menu at the mouse location. SwiftUI's `Menu` flattens custom labels on macOS,
-/// so the tiles draw themselves and use this for the options.
-@MainActor
-enum MenuPresenter {
-    private final class Item: NSMenuItem {
-        var handler: (() -> Void)?
-
-        @objc func fire() { handler?() }
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.changed(_:))
+        return button
     }
 
-    static func show(_ options: [MenuOption]) {
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        for option in options {
-            let item = Item(title: option.title, action: #selector(Item.fire), keyEquivalent: "")
-            item.target = item
-            item.handler = option.action
-            item.state = option.isSelected ? .on : .off
-            if let name = option.systemImage {
-                item.image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
-            }
-            menu.addItem(item)
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        context.coordinator.parent = self
+        let titles = options.map(\.title)
+        if button.itemTitles != titles {
+            button.removeAllItems()
+            button.addItems(withTitles: titles)
         }
-        menu.appearance = NSAppearance(named: .darkAqua)
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+        button.selectItem(at: options.firstIndex { $0.value == selection } ?? -1)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView button: NSPopUpButton, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? button.intrinsicContentSize.width, height: button.intrinsicContentSize.height)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: PopUpButton
+
+        init(parent: PopUpButton) { self.parent = parent }
+
+        @objc func changed(_ button: NSPopUpButton) {
+            let index = button.indexOfSelectedItem
+            guard parent.options.indices.contains(index) else { return }
+            parent.selection = parent.options[index].value
+        }
     }
 }

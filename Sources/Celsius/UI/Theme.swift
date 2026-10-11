@@ -2,7 +2,7 @@ import CelsiusCore
 import SwiftUI
 
 enum Theme {
-    static let popoverWidth: CGFloat = 400
+    static let popoverWidth: CGFloat = 320
     static let cardFill = Color.white.opacity(0.06)
     static let cardStroke = Color.white.opacity(0.07)
     static let cardRadius: CGFloat = 14
@@ -12,7 +12,6 @@ enum Theme {
     /// The accent color chosen in System Settings (or an ancestor's `.tint`), like native controls use.
     static let accent = Color.accentColor
     static let warning = Color.orange
-    static let ecoGreen = Color(red: 0.55, green: 0.85, blue: 0.60)
 
     /// Accent for the power button, slider, airflow and glow, per job mode. Cooling, the default,
     /// follows the system accent; the other modes keep their own hue so they stay recognizable.
@@ -72,12 +71,19 @@ enum Labels {
         }
     }
 
-    static func sleep(_ minutes: Int?) -> String {
-        guard let minutes, minutes > 0 else { return "Off" }
-        let hours = minutes / 60
-        let rest = minutes % 60
-        if hours == 0 { return "\(rest)m" }
-        return rest == 0 ? "\(hours)h" : "\(hours)h \(rest)m"
+    /// What the unit is doing, e.g. "Cooling to 18 °C".
+    static func activity(_ status: ACStatus?, target: Double?) -> String {
+        guard let status else { return "—" }
+        guard status.isOn else { return "Off" }
+        let goal = "\(temperature(target)) °C"
+        return switch status.mode {
+        case ACMode.cool: "Cooling to \(goal)"
+        case ACMode.heat: "Heating to \(goal)"
+        case ACMode.auto: "Auto · \(goal)"
+        case ACMode.dry: "Dehumidifying"
+        case ACMode.fan: "Fan only"
+        default: mode(status.mode)
+        }
     }
 
     static func temperature(_ value: Double?) -> String {
