@@ -1,5 +1,13 @@
 # Celsius
 
+[![Release](https://img.shields.io/github/v/release/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/gbvillarinho/celsius/total?style=flat-square)](https://github.com/gbvillarinho/celsius/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/gbvillarinho/celsius/release.yml?style=flat-square&label=build)](https://github.com/gbvillarinho/celsius/actions/workflows/release.yml)
+![macOS 15+](https://img.shields.io/badge/macOS-15%2B-000000?style=flat-square&logo=apple&logoColor=white)
+![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift&logoColor=white)
+[![Stars](https://img.shields.io/github/stars/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/commits/main)
+
 Control your LG air conditioner from the Mac menu bar. Click the icon, change the temperature, mode or
 fan speed, and you're done. No phone needed.
 
@@ -27,6 +35,28 @@ fan speed, and you're done. No phone needed.
 2. Download **Celsius.zip**.
 3. Double-click the file to unzip it, then drag **Celsius** into your **Applications** folder.
 4. Open **Celsius** from Applications. The Celsius icon appears in the menu bar.
+
+### Install with an AI assistant
+
+Prefer to let an AI do it? Copy this prompt into an assistant that can run commands on your Mac, such as
+[Claude Code](https://claude.com/claude-code):
+
+```text
+Install the Celsius menu bar app on this Mac.
+
+1. Download Celsius.zip from the latest release at
+   https://github.com/gbvillarinho/celsius/releases/latest
+   (for example: gh release download --repo gbvillarinho/celsius --pattern Celsius.zip)
+2. Unzip it and move Celsius.app into /Applications, replacing any older copy.
+3. Remove the quarantine flag so macOS opens it without the warning:
+   xattr -dr com.apple.quarantine /Applications/Celsius.app
+4. Open the app.
+
+Then tell me to paste my LG access token in the Celsius Settings screen.
+Do not ask for my token or run anything else.
+```
+
+The token is a secret, so paste it into the app yourself instead of giving it to the assistant.
 
 ### If macOS says it can't open the app
 
