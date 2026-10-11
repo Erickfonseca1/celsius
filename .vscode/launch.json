@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:celsius}",
+            "name": "Debug Celsius",
+            "target": "Celsius",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Celsius"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:celsius}",
+            "name": "Release Celsius",
+            "target": "Celsius",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Celsius"
+        }
+    ]
+}

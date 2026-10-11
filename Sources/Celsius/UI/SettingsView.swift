@@ -1,0 +1,161 @@
+import CelsiusCore
+import ServiceManagement
+import SwiftUI
+
+struct SettingsView: View {
+    var store: ACStore
+    var canGoBack: Bool
+    var onBack: () -> Void
+
+    @State private var token = ""
+    @State private var isConnecting = false
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                if canGoBack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back")
+                }
+                Text("Settings")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+
+            section("LG ThinQ") {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let device = store.device, store.hasToken {
+                        HStack(spacing: 10) {
+                            Image(systemName: "air.conditioner.horizontal")
+                                .font(.system(size: 16))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(device.displayName)
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(device.deviceInfo.modelName ?? "")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.secondaryText)
+                            }
+                            Spacer()
+                            FooterStatus(store: store)
+                        }
+                    } else {
+                        Text("Paste a Personal Access Token from your LG account to connect to your air conditioner.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    HStack(spacing: 8) {
+                        SecureField(store.hasToken ? "Replace token" : "thinqpat_…", text: $token)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.3)))
+                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.cardStroke))
+                            .onSubmit(connect)
+                        Button(action: connect) {
+                            if isConnecting {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("Connect")
+                            }
+                        }
+                        .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
+                    }
+
+                    if case .unauthorized = store.connection {
+                        Label("LG rejected this token. Create a new one and paste it here.", systemImage: "exclamationmark.triangle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    }
+
+                    Link(destination: URL(string: "https://connect-pat.lgthinq.com")!) {
+                        Label("Create a token at connect-pat.lgthinq.com", systemImage: "arrow.up.right.square")
+                            .font(.system(size: 12))
+                    }
+                    .foregroundStyle(Color(red: 0.55, green: 0.8, blue: 1))
+                }
+            }
+
+            section("General") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Launch at login", isOn: $launchAtLogin)
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                        .font(.system(size: 13))
+                        .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+                    if let loginError {
+                        Text(loginError)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
+            HStack {
+                if store.hasToken {
+                    Button("Sign out") {
+                        store.signOut()
+                    }
+                }
+                Spacer()
+                Button("Quit Celsius") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .keyboardShortcut("q")
+            }
+            .font(.system(size: 12))
+        }
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(Theme.secondaryText)
+            content()
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).fill(Theme.cardFill))
+                .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Theme.cardStroke))
+        }
+    }
+
+    private func connect() {
+        let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, !isConnecting else { return }
+        isConnecting = true
+        Task {
+            await store.connect(token: value)
+            isConnecting = false
+            if store.connection == .connected || store.connection == .deviceError {
+                token = ""
+                if canGoBack { onBack() }
+            }
+        }
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        guard enabled != (SMAppService.mainApp.status == .enabled) else { return }
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            loginError = nil
+        } catch {
+            loginError = "Couldn't change this: \(error.localizedDescription)"
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+}
