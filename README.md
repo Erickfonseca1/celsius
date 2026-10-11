@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/gbvillarinho/celsius/total?style=flat-square)](https://github.com/gbvillarinho/celsius/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/gbvillarinho/celsius/release.yml?style=flat-square&label=build)](https://github.com/gbvillarinho/celsius/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/github/license/gbvillarinho/celsius?style=flat-square)](LICENSE)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-000000?style=flat-square&logo=apple&logoColor=white)
 ![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift&logoColor=white)
 [![Stars](https://img.shields.io/github/stars/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/stargazers)
@@ -160,3 +161,7 @@ Layout:
 The app uses LG's official [ThinQ Connect API](https://connect-pat.lgthinq.com) with a Personal Access
 Token. The region is fixed to Brazil (`x-country: BR`, host `api-aic.lgthinq.com`); for another country,
 adjust `ThinQClient`. See [CLAUDE.md](CLAUDE.md) for architecture details and conventions.
+
+## License
+
+[MIT](LICENSE). Celsius is not affiliated with or endorsed by LG Electronics.
