@@ -53,6 +53,9 @@ public final class ACStore {
     /// When to read the state back after a command, to confirm it (or recover from a failure).
     static let refreshAfterSend: Duration = .seconds(3)
     static let refreshAfterFailure: Duration = .seconds(1)
+    /// Eco changes the unit's target temperature on its own, and the cloud is slow to report it, so the
+    /// state is read a few more times, stopping as soon as the target moves.
+    static let ecoFollowUpDelays: [Duration] = [.seconds(3), .seconds(3), .seconds(4)]
     static let messageDuration: Duration = .seconds(4)
     /// Waits before each retry of a read that failed in a way that may pass on its own.
     static let readRetryDelays: [Duration] = [.milliseconds(500), .milliseconds(1500)]
@@ -311,6 +314,21 @@ public final class ACStore {
         }
     }
 
+    /// Reads the state after each delay, stopping early once the target temperature differs from `target`.
+    private func scheduleRefreshes(after delays: [Duration], untilTargetChangesFrom target: Double?) {
+        guard !isPreview else { return }
+        refreshSoonTask?.cancel()
+        refreshSoonTask = Task { [weak self] in
+            for delay in delays {
+                guard let self else { return }
+                await self.sleep(delay)
+                guard !Task.isCancelled else { return }
+                await self.refresh()
+                if let target, let now = self.serverStatus?.targetTemperature, now != target { return }
+            }
+        }
+    }
+
     // MARK: Commands
 
     public func perform(_ command: ACCommand) {
@@ -370,7 +388,11 @@ public final class ACStore {
                 try await client.send(command, deviceID: deviceID)
                 noteSuccess()
                 keepOverrideAlive(for: command)
-                scheduleRefresh(after: Self.refreshAfterSend)
+                if command.field == .eco {
+                    scheduleRefreshes(after: Self.ecoFollowUpDelays, untilTargetChangesFrom: serverStatus?.targetTemperature)
+                } else {
+                    scheduleRefresh(after: Self.refreshAfterSend)
+                }
                 return
             } catch let error as ThinQError where !retried && (error.isTransient || error == .deviceOffline) {
                 retried = true

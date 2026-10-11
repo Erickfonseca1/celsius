@@ -371,6 +371,12 @@ final class FlakyCloud: @unchecked Sendable {
     private var state: String
     private var failures: [String: [Failure]] = [:]
     private var requests: [String] = []
+    /// What the state becomes once a command succeeds, like the unit changing a setting on its own.
+    var stateAfterControl: String? {
+        get { lock.withLock { _stateAfterControl } }
+        set { lock.withLock { _stateAfterControl = newValue } }
+    }
+    private var _stateAfterControl: String?
 
     init(state: String) { self.state = state }
 
@@ -400,6 +406,9 @@ final class FlakyCloud: @unchecked Sendable {
             lock.withLock { state = newState }
             throw URLError(.timedOut)
         case nil:
+            if path.hasSuffix("/control") {
+                lock.withLock { if let next = _stateAfterControl { state = next } }
+            }
             let current = lock.withLock { state }
             if path.hasSuffix("/devices") {
                 return reply(200, #"{"response":[{"deviceId":"d1","deviceInfo":{"deviceType":"DEVICE_AIR_CONDITIONER","alias":"AC"}}]}"#)
@@ -537,5 +546,30 @@ final class SleepLog: @unchecked Sendable {
         try await waitForSends(store)
         #expect(cloud.count("/control") == 3)
         #expect(sleeps.all.filter { $0 == ACStore.minimumSendGap }.count == 2)
+    }
+
+    @Test func ecoReadsTheStateAgainUntilTheTargetMoves() async throws {
+        let cloud = FlakyCloud(state: offState)
+        cloud.stateAfterControl = offState.replacingOccurrences(of: #""targetTemperature":18"#, with: #""targetTemperature":22"#)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        #expect(store.status?.targetTemperature == 18)
+        store.perform(.eco(true))
+        try await waitForSends(store)
+        for _ in 0..<100 where store.serverStatus?.targetTemperature != 22 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(store.status?.targetTemperature == 22)
+        try await Task.sleep(for: .milliseconds(100))
+        // The first read after the command already shows the new target, so it stops there.
+        #expect(cloud.count("/state") == 2)
+    }
+
+    @Test func ecoKeepsReadingWhenTheTargetStaysTheSame() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        store.perform(.eco(true))
+        try await waitForSends(store)
+        for _ in 0..<100 where cloud.count("/state") < 4 { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(cloud.count("/state") == 4)
     }
 }
