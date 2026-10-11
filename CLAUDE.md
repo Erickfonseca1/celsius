@@ -69,7 +69,7 @@ There are two targets with a strict split:
 - Speed changes in the airflow keep phase continuity through an anchor/phase clock instead of restarting.
 - Delayed view-local state changes use `.task(id:)`, so the previous wait is cancelled; avoid detached `Task {}` sleeps in `onChange`.
 - The main screen follows macOS Control Center: native switch, segmented control and pop-up buttons, Control Center–style round toggles, and a menu-item row for settings. Prefer native controls over custom-drawn ones.
-- SwiftUI's menu `Picker` sizes itself to its longest option and ignores `.frame(width:)`, so pop-ups that must line up use the `NSPopUpButton` wrapper, which honors the proposed width.
+- SwiftUI's menu `Picker` sizes itself to its longest option and ignores `.frame(width:)`, and the segmented `Picker` keeps its intrinsic width, so these use the `NSPopUpButton` / `NSSegmentedControl` wrappers, which honor the proposed width.
 
 ## Agents and skills
 

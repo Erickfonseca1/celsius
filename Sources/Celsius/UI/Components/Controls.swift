@@ -98,3 +98,50 @@ struct PopUpButton<Value: Hashable>: NSViewRepresentable {
         }
     }
 }
+
+/// A native segmented control that fills the width it's given, with equal segments. SwiftUI's
+/// segmented `Picker` keeps its intrinsic width and just centers itself in extra space.
+struct SegmentedControl<Value: Hashable>: NSViewRepresentable {
+    var options: [(title: String, value: Value)]
+    @Binding var selection: Value
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl()
+        control.trackingMode = .selectOne
+        control.segmentDistribution = .fillEqually
+        control.target = context.coordinator
+        control.action = #selector(Coordinator.changed(_:))
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        let titles = options.map(\.title)
+        if (0..<control.segmentCount).map({ control.label(forSegment: $0) ?? "" }) != titles {
+            control.segmentCount = titles.count
+            for (index, title) in titles.enumerated() {
+                control.setLabel(title, forSegment: index)
+            }
+        }
+        control.selectedSegment = options.firstIndex { $0.value == selection } ?? -1
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView control: NSSegmentedControl, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? control.intrinsicContentSize.width, height: control.intrinsicContentSize.height)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: SegmentedControl
+
+        init(parent: SegmentedControl) { self.parent = parent }
+
+        @objc func changed(_ control: NSSegmentedControl) {
+            let index = control.selectedSegment
+            guard parent.options.indices.contains(index) else { return }
+            parent.selection = parent.options[index].value
+        }
+    }
+}

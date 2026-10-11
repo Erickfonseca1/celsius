@@ -158,14 +158,11 @@ struct PopoverView: View {
             Text("Mode")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.secondaryText)
-            Picker("Mode", selection: Binding(get: { status?.mode ?? "" }, set: { store.perform(.mode($0)) })) {
-                ForEach(caps.modes, id: \.self) { mode in
-                    Text(Labels.mode(mode)).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
+            SegmentedControl(
+                options: caps.modes.map { (Labels.mode($0), $0) },
+                selection: Binding(get: { status?.mode ?? "" }, set: { store.perform(.mode($0)) })
+            )
+            .accessibilityLabel("Mode")
             .padding(.bottom, 2)
 
             pickerRow(
