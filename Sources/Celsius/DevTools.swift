@@ -31,6 +31,16 @@ enum DevTools {
             renderNative(popover, to: directory.appendingPathComponent("\(name)-native.png"))
         }
 
+        // A newer release available: the dot on the settings row, and the update link in Settings.
+        let update = AppUpdate(version: "1.2.0", url: URL(string: "https://github.com/gbvillarinho/celsius/releases/latest")!)
+        for (name, connection) in [("update-available", ConnectionState.connected), ("update-available-settings", .needsSetup)] {
+            let status = connection == .connected ? scenarios[0].1 : nil
+            let store = ACStore(previewStatus: status, capabilities: caps, connection: connection, availableUpdate: update)
+            let popover = PopoverView(store: store, fixedDate: date)
+            render(popover, to: directory.appendingPathComponent("\(name).png"))
+            renderNative(popover, to: directory.appendingPathComponent("\(name)-native.png"))
+        }
+
         // Airflow frames over time.
         for (index, offset) in [0.0, 0.3, 0.6, 0.9].enumerated() {
             let unit = ACUnitView(

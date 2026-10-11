@@ -297,3 +297,63 @@ final class Clock: @unchecked Sendable {
         #expect(try json(control.httpBody) == ACCommand.power(true).payload)
     }
 }
+
+@Suite struct UpdateTests {
+    @Test(arguments: [
+        ("1.0.2", "1.0.1", true),
+        ("v1.0.2", "1.0.1", true),
+        ("1.1", "1.0.9", true),
+        ("2.0.0", "1.9.9", true),
+        ("1.0.10", "1.0.9", true),
+        ("1.0.1", "1.0.1", false),
+        ("1.0", "1.0.0", false),
+        ("1.0.0", "1.0.1", false),
+        ("nightly", "1.0.1", false),
+    ])
+    func comparesVersions(candidate: String, current: String, expected: Bool) {
+        #expect(UpdateChecker.isNewer(candidate, than: current) == expected)
+    }
+
+    private func checker(current: String, status: Int = 200, tag: String = "v1.2.0") -> UpdateChecker {
+        let body = #"{"tag_name":"\#(tag)","html_url":"https://github.com/gbvillarinho/celsius/releases/tag/\#(tag)"}"#
+        return UpdateChecker(currentVersion: current, transport: stubTransport(status: status, body: body))
+    }
+
+    @Test func reportsANewerRelease() async throws {
+        let update = try #require(try await checker(current: "1.0.2").availableUpdate())
+        #expect(update.version == "1.2.0")
+        #expect(update.url.absoluteString.hasSuffix("/v1.2.0"))
+    }
+
+    @Test func reportsNothingWhenUpToDate() async throws {
+        #expect(try await checker(current: "1.2.0").availableUpdate() == nil)
+        #expect(try await checker(current: "1.3.0").availableUpdate() == nil)
+    }
+
+    @Test func failsOnAnErrorResponse() async {
+        await #expect(throws: ThinQError.self) { try await checker(current: "1.0.0", status: 403).availableUpdate() }
+    }
+
+    @MainActor @Test func storeKeepsTheUpdateAndChecksOncePerDay() async {
+        let clock = Clock()
+        let calls = RecordedRequests()
+        let body = #"{"tag_name":"v1.2.0","html_url":"https://github.com/gbvillarinho/celsius/releases/tag/v1.2.0"}"#
+        let transport: UpdateChecker.Transport = { request in
+            calls.append(request)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let store = ACStore(
+            settings: InMemorySettings(token: "tok"),
+            now: { clock.now },
+            updateChecker: UpdateChecker(currentVersion: "1.0.0", transport: transport)
+        )
+        await store.checkForUpdate()
+        #expect(store.availableUpdate?.version == "1.2.0")
+        await store.checkForUpdate()
+        #expect(calls.all.count == 1)
+
+        clock.now.addTimeInterval(ACStore.updateCheckInterval + 1)
+        await store.checkForUpdate()
+        #expect(calls.all.count == 2)
+    }
+}

@@ -33,13 +33,24 @@ struct CircleToggleRow: View {
 /// A full-width row that reads like a menu item, highlighted on hover (e.g. "Settings…").
 struct MenuRow: View {
     var title: String
+    /// Shows a small accent dot, e.g. when an update is waiting behind this row.
+    var showsBadge = false
     var action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            HStack(spacing: 6) {
+                Text(title)
+                Spacer(minLength: 0)
+                if showsBadge {
+                    Circle()
+                        .fill(Theme.accent)
+                        .frame(width: 7, height: 7)
+                        .accessibilityLabel("Update available")
+                }
+            }
                 .font(.system(size: 13))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 6)

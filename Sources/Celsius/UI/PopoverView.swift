@@ -57,7 +57,7 @@ struct PopoverView: View {
             Divider()
             toggleRows
             Divider()
-            MenuRow(title: "Air conditioner settings…") { showingSettings = true }
+            MenuRow(title: "Air conditioner settings…", showsBadge: store.availableUpdate != nil) { showingSettings = true }
         }
         .redacted(reason: status == nil ? .placeholder : [])
     }

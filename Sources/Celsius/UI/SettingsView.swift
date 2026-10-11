@@ -112,6 +112,7 @@ struct SettingsView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.warning)
                     }
+                    versionRow
                 }
             }
 
@@ -173,6 +174,27 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .card()
         }
+    }
+
+    /// The running version, with a link to the new release when there is one.
+    private var versionRow: some View {
+        HStack(spacing: 8) {
+            Text("Version \(Self.currentVersion)")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.secondaryText)
+            Spacer()
+            if let update = store.availableUpdate {
+                Link(destination: update.url) {
+                    Label("Update to \(update.version)", systemImage: "arrow.down.circle")
+                        .font(.system(size: 12))
+                }
+                .foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    static var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     }
 
     private func pasteToken() {

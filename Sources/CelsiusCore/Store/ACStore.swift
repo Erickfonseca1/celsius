@@ -26,6 +26,8 @@ public final class ACStore {
     public private(set) var isSending = false
     /// A short-lived error to show in the footer, e.g. a rejected command.
     public private(set) var transientMessage: String?
+    /// A newer release than the running app, if the last check found one.
+    public private(set) var availableUpdate: AppUpdate?
     private var overrides: [ACField: Override] = [:]
 
     /// The user's temperature range, saved as soon as it changes.
@@ -50,11 +52,15 @@ public final class ACStore {
     static let refreshAfterSend: Duration = .seconds(3)
     static let refreshAfterFailure: Duration = .seconds(1)
     static let messageDuration: Duration = .seconds(4)
+    /// How long to wait before asking GitHub for a new release again.
+    static let updateCheckInterval: TimeInterval = 24 * 60 * 60
 
     @ObservationIgnored private let settings: SettingsStorage
     @ObservationIgnored private let makeClient: (String, String) -> ThinQClient
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let isPreview: Bool
+    @ObservationIgnored private let updateChecker: UpdateChecker?
+    @ObservationIgnored private var lastUpdateCheck: Date?
     @ObservationIgnored private var capabilitiesLoaded = false
     @ObservationIgnored private var isRefreshing = false
     @ObservationIgnored private var isActive = false
@@ -73,8 +79,10 @@ public final class ACStore {
     public init(
         settings: SettingsStorage,
         makeClient: @escaping (String, String) -> ThinQClient = { ThinQClient(token: $0, clientID: $1) },
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        updateChecker: UpdateChecker? = nil
     ) {
+        self.updateChecker = updateChecker
         self.settings = settings
         self.makeClient = makeClient
         self.now = now
@@ -84,7 +92,10 @@ public final class ACStore {
     }
 
     /// A store with fixed data that never touches the network, for snapshots.
-    public init(previewStatus: ACStatus?, capabilities: ACCapabilities, connection: ConnectionState = .connected) {
+    public init(
+        previewStatus: ACStatus?, capabilities: ACCapabilities, connection: ConnectionState = .connected,
+        availableUpdate: AppUpdate? = nil
+    ) {
         // Limits that keep the given capabilities as they are.
         let limits = TemperatureLimits(
             minimum: capabilities.minTemperature, maximum: capabilities.maxTemperature,
@@ -95,6 +106,8 @@ public final class ACStore {
         self.makeClient = { ThinQClient(token: $0, clientID: $1) }
         self.now = Date.init
         self.isPreview = true
+        self.updateChecker = nil
+        self.availableUpdate = availableUpdate
         self.serverStatus = previewStatus
         self.deviceCapabilities = capabilities
         self.connection = connection
@@ -128,6 +141,20 @@ public final class ACStore {
     public func start() {
         isActive = true
         startPolling(immediately: true)
+        Task { await checkForUpdate() }
+    }
+
+    /// Looks for a newer release, at most once a day. A failure is silent: it's not worth bothering the user.
+    func checkForUpdate() async {
+        guard let updateChecker, !isPreview else { return }
+        let date = now()
+        if let last = lastUpdateCheck, date.timeIntervalSince(last) < Self.updateCheckInterval { return }
+        do {
+            availableUpdate = try await updateChecker.availableUpdate()
+            lastUpdateCheck = date
+        } catch {
+            // Leave lastUpdateCheck unset so a network failure is retried on the next start.
+        }
     }
 
     /// Stops polling, e.g. while the Mac sleeps.

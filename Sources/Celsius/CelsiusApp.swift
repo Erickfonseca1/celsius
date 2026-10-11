@@ -28,7 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
-        let store = ACStore(settings: AppSettings())
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        let store = ACStore(settings: AppSettings(), updateChecker: version.map { UpdateChecker(currentVersion: $0) })
         let controller = StatusItemController(store: store)
         self.store = store
         self.controller = controller
