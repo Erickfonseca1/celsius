@@ -53,6 +53,7 @@ public protocol SettingsStorage: AnyObject {
     var token: String? { get set }
     var clientID: String { get }
     var deviceID: String? { get set }
+    var temperatureLimits: TemperatureLimits { get set }
 }
 
 public final class AppSettings: SettingsStorage {
@@ -89,15 +90,25 @@ public final class AppSettings: SettingsStorage {
         get { defaults.string(forKey: "deviceID") }
         set { defaults.set(newValue, forKey: "deviceID") }
     }
+
+    public var temperatureLimits: TemperatureLimits {
+        get {
+            defaults.data(forKey: "temperatureLimits")
+                .flatMap { try? JSONDecoder().decode(TemperatureLimits.self, from: $0) } ?? .standard
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: "temperatureLimits") }
+    }
 }
 
 public final class InMemorySettings: SettingsStorage {
     public var token: String?
     public var clientID = "celsius-test"
     public var deviceID: String?
+    public var temperatureLimits: TemperatureLimits
 
-    public init(token: String? = nil, deviceID: String? = nil) {
+    public init(token: String? = nil, deviceID: String? = nil, temperatureLimits: TemperatureLimits = .standard) {
         self.token = token
         self.deviceID = deviceID
+        self.temperatureLimits = temperatureLimits
     }
 }

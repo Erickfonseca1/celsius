@@ -19,13 +19,19 @@ public enum ConnectionState: Equatable, Sendable {
 @Observable
 public final class ACStore {
     public private(set) var serverStatus: ACStatus?
-    public private(set) var capabilities: ACCapabilities = .fallback
+    /// What the device's profile says it supports.
+    public private(set) var deviceCapabilities: ACCapabilities = .fallback
     public private(set) var connection: ConnectionState = .loading
     public private(set) var device: ThinQDevice?
     public private(set) var isSending = false
     /// A short-lived error to show in the footer, e.g. a rejected command.
     public private(set) var transientMessage: String?
     private var overrides: [ACField: Override] = [:]
+
+    /// The user's temperature range, saved as soon as it changes.
+    public var temperatureLimits: TemperatureLimits {
+        didSet { settings.temperatureLimits = temperatureLimits }
+    }
 
     /// Polls faster while the popover is open.
     public var isPopoverVisible = false {
@@ -73,17 +79,24 @@ public final class ACStore {
         self.makeClient = makeClient
         self.now = now
         self.isPreview = false
+        self.temperatureLimits = settings.temperatureLimits
         if settings.token?.isEmpty ?? true { connection = .needsSetup }
     }
 
     /// A store with fixed data that never touches the network, for snapshots.
     public init(previewStatus: ACStatus?, capabilities: ACCapabilities, connection: ConnectionState = .connected) {
-        self.settings = InMemorySettings(token: "preview")
+        // Limits that keep the given capabilities as they are.
+        let limits = TemperatureLimits(
+            minimum: capabilities.minTemperature, maximum: capabilities.maxTemperature,
+            halfDegrees: capabilities.temperatureStep < 1
+        )
+        self.settings = InMemorySettings(token: "preview", temperatureLimits: limits)
+        self.temperatureLimits = limits
         self.makeClient = { ThinQClient(token: $0, clientID: $1) }
         self.now = Date.init
         self.isPreview = true
         self.serverStatus = previewStatus
-        self.capabilities = capabilities
+        self.deviceCapabilities = capabilities
         self.connection = connection
         self.device = ThinQDevice(
             deviceId: "preview",
@@ -104,6 +117,9 @@ public final class ACStore {
         }
         return status
     }
+
+    /// What the UI offers: the device's capabilities within the user's temperature limits.
+    public var capabilities: ACCapabilities { deviceCapabilities.limited(to: temperatureLimits) }
 
     public var hasToken: Bool { !(settings.token?.isEmpty ?? true) }
 
@@ -181,7 +197,7 @@ public final class ACStore {
         do {
             let deviceID = try await resolveDevice(client)
             if !capabilitiesLoaded {
-                capabilities = try await client.capabilities(deviceID: deviceID)
+                deviceCapabilities = try await client.capabilities(deviceID: deviceID)
                 capabilitiesLoaded = true
             }
             let status = try await client.status(deviceID: deviceID)

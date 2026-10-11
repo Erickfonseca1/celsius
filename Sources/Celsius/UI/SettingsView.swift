@@ -3,7 +3,7 @@ import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
-    var store: ACStore
+    @Bindable var store: ACStore
     var canGoBack: Bool
     var onBack: () -> Void
 
@@ -87,6 +87,12 @@ struct SettingsView: View {
                 }
             }
 
+            if store.hasToken {
+                section("Temperature") {
+                    temperatureLimits
+                }
+            }
+
             section("General") {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Launch at login", isOn: $launchAtLogin)
@@ -115,6 +121,37 @@ struct SettingsView: View {
                 .keyboardShortcut("q")
             }
             .font(.system(size: 12))
+        }
+    }
+
+    /// Minimum and maximum steppers bounded by what the device accepts, plus half degrees when it has them.
+    private var temperatureLimits: some View {
+        let device = store.deviceCapabilities
+        let limits = store.temperatureLimits
+        return VStack(alignment: .leading, spacing: 8) {
+            limitRow("Minimum", value: $store.temperatureLimits.minimum, in: device.minTemperature, limits.maximum - 1)
+            limitRow("Maximum", value: $store.temperatureLimits.maximum, in: limits.minimum + 1, device.maxTemperature)
+            if device.temperatureStep < 1 {
+                Toggle("Half degrees", isOn: $store.temperatureLimits.halfDegrees)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+            }
+        }
+        .font(.system(size: 13))
+    }
+
+    /// Saved limits can fall outside a different device's range, so the bounds never invert.
+    private func limitRow(_ title: String, value: Binding<Double>, in lower: Double, _ upper: Double) -> some View {
+        let range = lower...max(lower, upper)
+        return HStack {
+            Text(title)
+            Spacer()
+            Text("\(Labels.temperature(value.wrappedValue))°C")
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+            Stepper(title, value: value, in: range, step: 1)
+                .labelsHidden()
+                .controlSize(.small)
         }
     }
 

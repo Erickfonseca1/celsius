@@ -128,6 +128,21 @@ public struct ACStatus: Sendable, Equatable {
     }
 }
 
+/// The target temperature range the user wants to work with, set in Settings.
+public struct TemperatureLimits: Codable, Sendable, Equatable {
+    public var minimum: Double
+    public var maximum: Double
+    public var halfDegrees: Bool
+
+    public static let standard = TemperatureLimits(minimum: 18, maximum: 25, halfDegrees: false)
+
+    public init(minimum: Double, maximum: Double, halfDegrees: Bool) {
+        self.minimum = minimum
+        self.maximum = maximum
+        self.halfDegrees = halfDegrees
+    }
+}
+
 /// What the device supports, parsed from `GET devices/{id}/profile`.
 public struct ACCapabilities: Sendable, Equatable {
     public var modes: [String]
@@ -194,6 +209,22 @@ public struct ACCapabilities: Sendable, Equatable {
         supportsEco = hasProfile ? writable("powerSave", "powerSaveEnabled") != nil : fallback.supportsEco
         supportsSwing = hasProfile ? writable("windDirection", "rotateUpDown") != nil : fallback.supportsSwing
         supportsSleep = hasProfile ? writable("sleepTimer", "relativeHourToStop") != nil : fallback.supportsSleep
+    }
+
+    /// Narrows the temperature range and step to the user's limits, never beyond what the device accepts.
+    /// Profiles can advertise more than the unit really does (e.g. half degrees it ignores).
+    public func limited(to limits: TemperatureLimits) -> ACCapabilities {
+        var copy = self
+        let low = Swift.max(minTemperature, Swift.min(limits.minimum, maxTemperature))
+        let high = Swift.min(maxTemperature, Swift.max(limits.maximum, minTemperature))
+        if low < high {
+            copy.minTemperature = low
+            copy.maxTemperature = high
+        }
+        if !limits.halfDegrees {
+            copy.temperatureStep = Swift.max(temperatureStep, 1)
+        }
+        return copy
     }
 
     /// Clamps and snaps a temperature to the device's range and step.

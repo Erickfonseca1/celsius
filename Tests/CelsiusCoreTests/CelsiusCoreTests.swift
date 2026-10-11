@@ -79,6 +79,26 @@ private func json(_ data: Data?) throws -> JSONValue {
         #expect(caps.snap(10) == 18)
         #expect(caps.snap(31) == 30)
     }
+
+    @Test func limitsNarrowRangeAndDropHalfDegrees() {
+        let caps = ACCapabilities.fallback  // 18–30, step 1
+        let device = ACCapabilities(
+            modes: [], fanSpeeds: [], minTemperature: 18, maxTemperature: 30, temperatureStep: 0.5,
+            supportsEco: true, supportsSwing: true, supportsSleep: true
+        )
+        let limited = device.limited(to: .standard)
+        #expect(limited.minTemperature == 18 && limited.maxTemperature == 25)
+        #expect(limited.temperatureStep == 1)
+        #expect(limited.snap(18.5) == 19)
+        #expect(limited.snap(29) == 25)
+
+        let half = device.limited(to: TemperatureLimits(minimum: 18, maximum: 25, halfDegrees: true))
+        #expect(half.temperatureStep == 0.5)
+
+        // Limits never go beyond what the device accepts, and a device step of 1 stays 1.
+        let wide = caps.limited(to: TemperatureLimits(minimum: 10, maximum: 40, halfDegrees: true))
+        #expect(wide.minTemperature == 18 && wide.maxTemperature == 30 && wide.temperatureStep == 1)
+    }
 }
 
 // MARK: - Command payloads (formats validated against the real unit)
@@ -217,6 +237,15 @@ final class Clock: @unchecked Sendable {
     }
 
     private let offState = #"{"operation":{"airConOperationMode":"POWER_OFF"},"airConJobMode":{"currentJobMode":"COOL"},"temperature":{"currentTemperature":26,"targetTemperature":18,"unit":"C"}}"#
+
+    @Test func temperatureLimitsArePersisted() {
+        let settings = InMemorySettings(token: "tok")
+        let store = ACStore(settings: settings)
+        #expect(store.capabilities.maxTemperature == 25)
+        store.temperatureLimits.maximum = 27
+        #expect(settings.temperatureLimits.maximum == 27)
+        #expect(store.capabilities.maxTemperature == 27)
+    }
 
     @Test func needsSetupWithoutToken() {
         let store = ACStore(settings: InMemorySettings())
