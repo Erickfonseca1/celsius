@@ -41,6 +41,12 @@ enum DevTools {
             renderNative(popover, to: directory.appendingPathComponent("\(name)-native.png"))
         }
 
+        // Requests are failing, but the last known state is still shown.
+        let reconnecting = ACStore(previewStatus: scenarios[0].1, capabilities: caps, isReconnecting: true)
+        let reconnectingPopover = PopoverView(store: reconnecting, fixedDate: date)
+        render(reconnectingPopover, to: directory.appendingPathComponent("reconnecting.png"))
+        renderNative(reconnectingPopover, to: directory.appendingPathComponent("reconnecting-native.png"))
+
         // Airflow frames over time.
         for (index, offset) in [0.0, 0.3, 0.6, 0.9].enumerated() {
             let unit = ACUnitView(

@@ -26,6 +26,8 @@ public final class ACStore {
     public private(set) var isSending = false
     /// A short-lived error to show in the footer, e.g. a rejected command.
     public private(set) var transientMessage: String?
+    /// True while a few requests in a row have failed but the last known state is still being shown.
+    public private(set) var isReconnecting = false
     /// A newer release than the running app, if the last check found one.
     public private(set) var availableUpdate: AppUpdate?
     private var overrides: [ACField: Override] = [:]
@@ -52,6 +54,15 @@ public final class ACStore {
     static let refreshAfterSend: Duration = .seconds(3)
     static let refreshAfterFailure: Duration = .seconds(1)
     static let messageDuration: Duration = .seconds(4)
+    /// Waits before each retry of a read that failed in a way that may pass on its own.
+    static let readRetryDelays: [Duration] = [.milliseconds(500), .milliseconds(1500)]
+    /// Consecutive failed refreshes before the UI says the connection is lost.
+    static let failuresBeforeOffline = 3
+    /// Wait before sending a failed command once more, and the longer wait after a rate limit.
+    static let commandRetryDelay: Duration = .seconds(1)
+    static let rateLimitRetryDelay: Duration = .seconds(2)
+    /// Pause between two commands in a burst, so LG's rate limit isn't hit.
+    static let minimumSendGap: Duration = .milliseconds(400)
     /// How long to wait before asking GitHub for a new release again.
     static let updateCheckInterval: TimeInterval = 24 * 60 * 60
 
@@ -60,6 +71,8 @@ public final class ACStore {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let isPreview: Bool
     @ObservationIgnored private let updateChecker: UpdateChecker?
+    @ObservationIgnored private let sleep: @Sendable (Duration) async -> Void
+    @ObservationIgnored private var failureStreak = 0
     @ObservationIgnored private var lastUpdateCheck: Date?
     @ObservationIgnored private var capabilitiesLoaded = false
     @ObservationIgnored private var isRefreshing = false
@@ -80,9 +93,11 @@ public final class ACStore {
         settings: SettingsStorage,
         makeClient: @escaping (String, String) -> ThinQClient = { ThinQClient(token: $0, clientID: $1) },
         now: @escaping () -> Date = Date.init,
-        updateChecker: UpdateChecker? = nil
+        updateChecker: UpdateChecker? = nil,
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     ) {
         self.updateChecker = updateChecker
+        self.sleep = sleep
         self.settings = settings
         self.makeClient = makeClient
         self.now = now
@@ -94,7 +109,7 @@ public final class ACStore {
     /// A store with fixed data that never touches the network, for snapshots.
     public init(
         previewStatus: ACStatus?, capabilities: ACCapabilities, connection: ConnectionState = .connected,
-        availableUpdate: AppUpdate? = nil
+        availableUpdate: AppUpdate? = nil, isReconnecting: Bool = false
     ) {
         // Limits that keep the given capabilities as they are.
         let limits = TemperatureLimits(
@@ -107,7 +122,9 @@ public final class ACStore {
         self.now = Date.init
         self.isPreview = true
         self.updateChecker = nil
+        self.sleep = { _ in }
         self.availableUpdate = availableUpdate
+        self.isReconnecting = isReconnecting
         self.serverStatus = previewStatus
         self.deviceCapabilities = capabilities
         self.connection = connection
@@ -228,18 +245,39 @@ public final class ACStore {
 
         let client = makeClient(token, settings.clientID)
         do {
-            let deviceID = try await resolveDevice(client)
-            if !capabilitiesLoaded {
-                deviceCapabilities = try await client.capabilities(deviceID: deviceID)
-                capabilitiesLoaded = true
+            let status = try await retryingTransient {
+                let deviceID = try await resolveDevice(client)
+                if !capabilitiesLoaded {
+                    deviceCapabilities = try await client.capabilities(deviceID: deviceID)
+                    capabilitiesLoaded = true
+                }
+                return try await client.status(deviceID: deviceID)
             }
-            let status = try await client.status(deviceID: deviceID)
             serverStatus = status
             pruneOverrides()
+            noteSuccess()
             connection = status.hasError ? .deviceError : .connected
         } catch {
             handle(error)
         }
+    }
+
+    /// Runs a read, trying again after a short wait when it fails in a way that may pass on its own.
+    private func retryingTransient<T>(_ operation: () async throws -> T) async throws -> T {
+        var delays = Self.readRetryDelays[...]
+        while true {
+            do {
+                return try await operation()
+            } catch let error as ThinQError where error.isTransient && !delays.isEmpty {
+                await sleep(delays.removeFirst())
+                if Task.isCancelled { throw CancellationError() }
+            }
+        }
+    }
+
+    private func noteSuccess() {
+        failureStreak = 0
+        isReconnecting = false
     }
 
     private func resolveDevice(_ client: ThinQClient) async throws -> String {
@@ -315,6 +353,7 @@ public final class ACStore {
             while let self, !self.queue.isEmpty {
                 let next = self.queue.removeFirst()
                 await self.send(next)
+                if !self.queue.isEmpty { await self.sleep(Self.minimumSendGap) }
             }
             self?.worker = nil
             self?.isSending = false
@@ -324,18 +363,43 @@ public final class ACStore {
     private func send(_ command: ACCommand) async {
         guard !isPreview else { return }
         guard let token = settings.token, let deviceID = device?.id else { return }
-        do {
-            try await makeClient(token, settings.clientID).send(command, deviceID: deviceID)
-            if overrides[command.field]?.command == command {
-                overrides[command.field]?.expires = now().addingTimeInterval(Self.overrideLifetime)
+        let client = makeClient(token, settings.clientID)
+        var retried = false
+        while true {
+            do {
+                try await client.send(command, deviceID: deviceID)
+                noteSuccess()
+                keepOverrideAlive(for: command)
+                scheduleRefresh(after: Self.refreshAfterSend)
+                return
+            } catch let error as ThinQError where !retried && (error.isTransient || error == .deviceOffline) {
+                retried = true
+                keepOverrideAlive(for: command)
+                await sleep(error == .rateLimited ? Self.rateLimitRetryDelay : Self.commandRetryDelay)
+                // A newer value for the same field is already waiting, so this one is stale.
+                if queue.contains(where: { $0.field == command.field }) { return }
+                // A timeout doesn't say whether the unit got the command; don't send it twice.
+                if case .network = error,
+                   let current = try? await client.status(deviceID: deviceID),
+                   current.applying(command) == current {
+                    noteSuccess()
+                    scheduleRefresh(after: Self.refreshAfterSend)
+                    return
+                }
+            } catch {
+                if overrides[command.field]?.command == command {
+                    overrides[command.field] = nil
+                }
+                handle(error)
+                scheduleRefresh(after: Self.refreshAfterFailure)
+                return
             }
-            scheduleRefresh(after: Self.refreshAfterSend)
-        } catch {
-            if overrides[command.field]?.command == command {
-                overrides[command.field] = nil
-            }
-            handle(error)
-            scheduleRefresh(after: Self.refreshAfterFailure)
+        }
+    }
+
+    private func keepOverrideAlive(for command: ACCommand) {
+        if overrides[command.field]?.command == command {
+            overrides[command.field]?.expires = now().addingTimeInterval(Self.overrideLifetime)
         }
     }
 
@@ -345,8 +409,17 @@ public final class ACStore {
         switch error {
         case .unauthorized:
             connection = .unauthorized
-        case .deviceOffline, .network:
+        case .deviceOffline:
             connection = .offline(error.message)
+        case .network, .serverError:
+            // One failed request is a hiccup: keep showing the last state until it keeps failing.
+            failureStreak += 1
+            if serverStatus != nil, failureStreak < Self.failuresBeforeOffline {
+                isReconnecting = true
+            } else {
+                isReconnecting = false
+                connection = .offline(error.message)
+            }
         case .rateLimited, .rejected, .api, .invalidResponse:
             if serverStatus == nil { connection = .offline(error.message) }
             showMessage(error.message)

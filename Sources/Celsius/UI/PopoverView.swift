@@ -68,7 +68,7 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(store.device?.displayName ?? "Air conditioner")
                     .font(.system(size: 13, weight: .semibold))
-                if store.transientMessage != nil || store.connection != .connected {
+                if store.transientMessage != nil || store.isReconnecting || store.connection != .connected {
                     FooterStatus(store: store)
                 } else {
                     Text("Room · \(Labels.temperature(status?.currentTemperature)) °C")

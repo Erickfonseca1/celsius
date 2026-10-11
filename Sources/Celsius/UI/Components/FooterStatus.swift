@@ -30,6 +30,8 @@ struct FooterStatus: View {
             return Indicator(icon: "exclamationmark.triangle", text: message, color: Theme.warning)
         }
         return switch store.connection {
+        case .connected where store.isReconnecting:
+            Indicator(icon: "arrow.triangle.2.circlepath", text: "Reconnecting…", color: Theme.warning)
         case .connected where store.isSending:
             Indicator(icon: "arrow.triangle.2.circlepath", text: "Updating…")
         case .connected:

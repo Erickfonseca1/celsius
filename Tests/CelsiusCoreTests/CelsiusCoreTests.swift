@@ -357,3 +357,185 @@ final class Clock: @unchecked Sendable {
         #expect(calls.all.count == 2)
     }
 }
+
+/// A fake LG cloud that can fail on demand: each path suffix has a list of failures handed out in order.
+final class FlakyCloud: @unchecked Sendable {
+    enum Failure {
+        case network
+        case rateLimited
+        /// The unit gets the command but the response never arrives.
+        case timeoutAfterApplying(state: String)
+    }
+
+    private let lock = NSLock()
+    private var state: String
+    private var failures: [String: [Failure]] = [:]
+    private var requests: [String] = []
+
+    init(state: String) { self.state = state }
+
+    func fail(_ suffix: String, with list: [Failure]) { lock.withLock { failures[suffix, default: []] += list } }
+    func count(_ suffix: String) -> Int { lock.withLock { requests.filter { $0.hasSuffix(suffix) }.count } }
+
+    var transport: ThinQClient.Transport {
+        { [self] request in try handle(request) }
+    }
+
+    private func handle(_ request: URLRequest) throws -> (Data, URLResponse) {
+        let path = request.url!.path
+        let failure: Failure? = lock.withLock {
+            requests.append(path)
+            guard let key = failures.keys.first(where: { path.hasSuffix($0) }), !(failures[key]?.isEmpty ?? true) else { return nil }
+            return failures[key]!.removeFirst()
+        }
+        func reply(_ status: Int, _ body: String) -> (Data, URLResponse) {
+            (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+        switch failure {
+        case .network:
+            throw URLError(.timedOut)
+        case .rateLimited:
+            return reply(429, #"{"error":{"code":"1306","message":"Too many requests"}}"#)
+        case .timeoutAfterApplying(let newState):
+            lock.withLock { state = newState }
+            throw URLError(.timedOut)
+        case nil:
+            let current = lock.withLock { state }
+            if path.hasSuffix("/devices") {
+                return reply(200, #"{"response":[{"deviceId":"d1","deviceInfo":{"deviceType":"DEVICE_AIR_CONDITIONER","alias":"AC"}}]}"#)
+            }
+            return reply(200, path.hasSuffix("/state") ? #"{"response":\#(current)}"# : #"{"response":{}}"#)
+        }
+    }
+}
+
+final class SleepLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Duration] = []
+    var all: [Duration] { lock.withLock { storage } }
+    func add(_ duration: Duration) { lock.withLock { storage.append(duration) } }
+}
+
+@MainActor
+@Suite struct ResilienceTests {
+    private let offState = #"{"operation":{"airConOperationMode":"POWER_OFF"},"airConJobMode":{"currentJobMode":"COOL"},"temperature":{"currentTemperature":26,"targetTemperature":18,"unit":"C"}}"#
+    private let onState = #"{"operation":{"airConOperationMode":"POWER_ON"},"airConJobMode":{"currentJobMode":"COOL"},"temperature":{"currentTemperature":26,"targetTemperature":18,"unit":"C"}}"#
+
+    private func makeStore(_ cloud: FlakyCloud, sleeps: SleepLog) -> ACStore {
+        ACStore(
+            settings: InMemorySettings(token: "tok"),
+            makeClient: { ThinQClient(token: $0, clientID: $1, transport: cloud.transport) },
+            sleep: { sleeps.add($0) }
+        )
+    }
+
+    private func waitForSends(_ store: ACStore) async throws {
+        for _ in 0..<100 where store.isSending {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    @Test func aReadThatFailsOnceIsRetriedQuietly() async {
+        let cloud = FlakyCloud(state: offState)
+        cloud.fail("/state", with: [.network])
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        #expect(store.connection == .connected)
+        #expect(store.isReconnecting == false)
+        #expect(store.status != nil)
+        #expect(cloud.count("/state") == 2)
+    }
+
+    @Test func offlineOnlyAfterSeveralFailedRefreshes() async {
+        let cloud = FlakyCloud(state: offState)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        #expect(store.connection == .connected)
+
+        // Each refresh makes three attempts: the first try plus two retries.
+        cloud.fail("/state", with: Array(repeating: .network, count: 9))
+        await store.refresh()
+        #expect(store.connection == .connected)
+        #expect(store.isReconnecting)
+        await store.refresh()
+        #expect(store.connection == .connected)
+        await store.refresh()
+        guard case .offline = store.connection else { Issue.record("expected offline, got \(store.connection)"); return }
+        #expect(store.isReconnecting == false)
+
+        await store.refresh()
+        #expect(store.connection == .connected)
+        #expect(store.isReconnecting == false)
+    }
+
+    @Test func offlineRightAwayWhenThereIsNoStateYet() async {
+        let cloud = FlakyCloud(state: offState)
+        cloud.fail("/devices", with: Array(repeating: .network, count: 3))
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        guard case .offline = store.connection else { Issue.record("expected offline, got \(store.connection)"); return }
+    }
+
+    @Test func aFailedCommandIsRetriedAndTheChangeStaysVisible() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        cloud.fail("/control", with: [.network])
+        store.perform(.power(true))
+        #expect(store.status?.isOn == true)
+        try await waitForSends(store)
+        #expect(store.status?.isOn == true)
+        #expect(store.transientMessage == nil)
+        // The timeout was ambiguous, so the store checked the state first (still off) and then sent again.
+        #expect(cloud.count("/control") == 2)
+    }
+
+    @Test func aRateLimitedCommandWaitsLongerAndIsNotLost() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let sleeps = SleepLog()
+        let store = makeStore(cloud, sleeps: sleeps)
+        await store.refresh()
+        cloud.fail("/control", with: [.rateLimited])
+        store.perform(.power(true))
+        try await waitForSends(store)
+        #expect(cloud.count("/control") == 2)
+        #expect(sleeps.all.contains(ACStore.rateLimitRetryDelay))
+        #expect(store.transientMessage == nil)
+    }
+
+    @Test func aCommandTheUnitAlreadyAppliedIsNotSentTwice() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        cloud.fail("/control", with: [.timeoutAfterApplying(state: onState)])
+        store.perform(.power(true))
+        try await waitForSends(store)
+        #expect(cloud.count("/control") == 1)
+        #expect(store.transientMessage == nil)
+    }
+
+    @Test func aCommandThatKeepsFailingIsDroppedWithAMessage() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let store = makeStore(cloud, sleeps: SleepLog())
+        await store.refresh()
+        cloud.fail("/control", with: [.rateLimited, .rateLimited])
+        store.perform(.power(true))
+        try await waitForSends(store)
+        #expect(cloud.count("/control") == 2)
+        #expect(store.status?.isOn == false)
+        #expect(store.transientMessage != nil)
+    }
+
+    @Test func burstsOfDifferentCommandsAreSpacedOut() async throws {
+        let cloud = FlakyCloud(state: offState)
+        let sleeps = SleepLog()
+        let store = makeStore(cloud, sleeps: sleeps)
+        await store.refresh()
+        store.perform(.power(true))
+        store.perform(.eco(true))
+        store.perform(.swing(true))
+        try await waitForSends(store)
+        #expect(cloud.count("/control") == 3)
+        #expect(sleeps.all.filter { $0 == ACStore.minimumSendGap }.count == 2)
+    }
+}

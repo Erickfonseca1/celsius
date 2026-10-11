@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public enum ThinQError: Error, Equatable, Sendable {
     /// The token is missing, invalid or lacks permission.
@@ -10,7 +11,18 @@ public enum ThinQError: Error, Equatable, Sendable {
     case rejected(String)
     case api(code: String, message: String)
     case network(String)
+    /// LG's servers failed (HTTP 5xx) without a usable error body.
+    case serverError(Int)
     case invalidResponse
+
+    /// Worth trying again shortly: the same request may well succeed. A unit the cloud reports as offline
+    /// isn't included, because that's a definite answer rather than a hiccup.
+    public var isTransient: Bool {
+        switch self {
+        case .network, .rateLimited, .serverError: true
+        case .unauthorized, .deviceOffline, .rejected, .api, .invalidResponse: false
+        }
+    }
 
     public var message: String {
         switch self {
@@ -20,6 +32,7 @@ public enum ThinQError: Error, Equatable, Sendable {
         case .rejected(let message): message
         case .api(_, let message): message
         case .network(let message): message
+        case .serverError: "LG's servers are having trouble"
         case .invalidResponse: "Unexpected response from LG"
         }
     }
@@ -35,7 +48,9 @@ public enum ThinQError: Error, Equatable, Sendable {
         case "2302", "2303", "2304", "2305":
             return .rejected(message)
         default:
-            return status == 401 ? .unauthorized : .api(code: code, message: message)
+            if status == 401 { return .unauthorized }
+            if status >= 500 { return .serverError(status) }
+            return .api(code: code, message: message)
         }
     }
 }
@@ -48,6 +63,8 @@ public struct ThinQClient: Sendable {
     public static let baseURL = URL(string: "https://api-aic.lgthinq.com/")!
     public static let country = "BR"
     static let apiKey = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3"
+
+    private static let log = Logger(subsystem: "com.gabrielvillarinho.celsius", category: "api")
 
     let token: String
     let clientID: String
@@ -109,19 +126,24 @@ public struct ThinQClient: Sendable {
         do {
             (data, response) = try await transport(request)
         } catch let error as URLError {
+            Self.log.error("\(method, privacy: .public) \(path, privacy: .public) failed: \(error.code.rawValue, privacy: .public)")
             throw ThinQError.network(error.localizedDescription)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let envelope = try? JSONDecoder().decode(JSONValue.self, from: data)
 
         if let error = envelope?["error"] {
+            let code = error["code"]?.string ?? ""
+            Self.log.error("\(method, privacy: .public) \(path, privacy: .public) status \(status, privacy: .public) code \(code, privacy: .public)")
             throw ThinQError.from(
-                code: error["code"]?.string ?? "",
+                code: code,
                 message: error["message"]?.string ?? "Request failed",
                 status: status
             )
         }
         guard (200..<300).contains(status), let envelope else {
+            Self.log.error("\(method, privacy: .public) \(path, privacy: .public) status \(status, privacy: .public)")
+            if status >= 500 { throw ThinQError.serverError(status) }
             throw status == 401 ? ThinQError.unauthorized : ThinQError.invalidResponse
         }
         return envelope["response"] ?? .null
