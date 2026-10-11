@@ -8,6 +8,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private let store: ACStore
+    private var observers: [NSObjectProtocol] = []
 
     init(store: ACStore) {
         self.store = store
@@ -27,6 +28,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.imagePosition = .imageLeading
         }
         observeStore()
+        closePopoverWhenFocusMovesAway()
+    }
+
+    /// Like a native menu bar popover, dismiss when the user moves on. A transient popover only closes on a
+    /// click it can see, so switching to a full-screen app's Space left it stranded over that app's content.
+    private func closePopoverWhenFocusMovesAway() {
+        let close: @Sendable (Notification) -> Void = { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.popover.isShown else { return }
+                self.popover.close()
+            }
+        }
+        observers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main, using: close))
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: close))
     }
 
     @objc func togglePopover() {
