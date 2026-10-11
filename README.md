@@ -12,7 +12,9 @@
 Control your LG air conditioner from the Mac menu bar. Click the icon, pick a temperature, mode or fan
 speed, and that's it. No phone needed.
 
-<!-- screenshot here -->
+<p align="center">
+  <img src="docs/demo.gif" alt="The Celsius popover in the macOS menu bar" width="560">
+</p>
 
 ## What it does
 
