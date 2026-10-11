@@ -1,73 +1,102 @@
 # Celsius
 
-A macOS menu bar app that controls an LG ThinQ air conditioner. It uses the official
-[LG ThinQ Connect API](https://connect-pat.lgthinq.com) with a Personal Access Token (PAT).
-Click the menu bar icon and a popover opens with the controls, styled after macOS Control Center.
+Control your LG air conditioner from the Mac menu bar. Click the icon, change the temperature, mode or
+fan speed, and you're done. No phone needed.
 
-## Features
+<!-- screenshot here -->
 
-- Power on and off
-- Switch the operating mode (cool, fan, etc., depending on your model)
-- Set the target temperature (−/+ buttons or slider), with a configurable range
-- Change the fan speed and toggle swing
-- Toggle Eco mode
-- Set a sleep timer (turns the unit off after N hours)
-- Shows the current state, refreshing faster while the popover is open
-- Launch at login and half-degree steps as options
+## What you can do
 
-The controls shown depend on what your model allows writing, according to the device profile.
+- Turn the air conditioner on and off
+- Change the mode (cool, fan, etc.)
+- Set the temperature
+- Change the fan speed and the air swing
+- Turn Eco mode on and off
+- Set a sleep timer (turns off after a few hours)
+- Open the app automatically when you log in
 
-## Requirements
+## What you need
 
-- macOS 15 or later
-- Command Line Tools (`xcode-select --install`). Xcode is not needed
-- Swift 6.2 or later
-- An LG air conditioner already registered in the LG ThinQ phone app
-- An LG account in the **Brazil** region (see Limitations)
+- A Mac with **macOS 15 or later**
+- An **LG air conditioner** that already works in the **LG ThinQ** phone app
+- An **LG account in Brazil** (the app is set up for that region)
 
 ## Install
+
+1. Go to the [**Releases** page](https://github.com/gbvillarinho/celsius/releases/latest).
+2. Download **Celsius.zip**.
+3. Double-click the file to unzip it, then drag **Celsius** into your **Applications** folder.
+4. Open **Celsius** from Applications. The Celsius icon appears in the menu bar.
+
+### If macOS says it can't open the app
+
+The first time, macOS may warn that it can't verify the app. This is normal for apps that don't come from
+the App Store. To open it anyway:
+
+1. Right-click (or Control-click) **Celsius** in Applications and choose **Open**.
+2. Click **Open** in the window that appears.
+
+If that option doesn't show up, open **System Settings → Privacy & Security**, scroll down, and click
+**Open Anyway** next to Celsius.
+
+You only need to do this once.
+
+## Connect your air conditioner
+
+Celsius needs a free **access token** from LG so it can talk to your air conditioner. It takes about a minute.
+
+### 1. Get your token
+
+1. Open [connect-pat.lgthinq.com](https://connect-pat.lgthinq.com) and sign in with your LG account.
+2. Create a new token (a "Personal Access Token").
+3. Copy it. It starts with `thinqpat_`.
+
+### 2. Paste it into Celsius
+
+1. Click the Celsius icon in the menu bar. The first time, it opens on the **Settings** screen.
+2. Paste the token into the field and click **Connect**.
+3. Your air conditioner shows up and you can control it.
+
+Your token stays safe in the Mac's Keychain, on this Mac only. It is never saved in a file or sent
+anywhere except to LG.
+
+## Questions
+
+**"LG rejected this token."**
+The token is wrong or expired. Create a new one on the LG page and paste it again in Settings.
+
+**Nothing changes right after I press a button.**
+LG's servers take a few seconds to confirm a change. Celsius shows the new value right away and checks it
+a moment later.
+
+**Does it work in other countries?**
+Not yet. It is set up for Brazil.
+
+**Does it work with any LG air conditioner?**
+It was built and tested with one model. Others should work, but some controls may be missing or different.
+
+**How do I disconnect or switch accounts?**
+Open **Settings** in the app and sign out, then paste a new token.
+
+---
+
+## For developers
+
+Celsius is a Swift Package (no Xcode project). You only need the Command Line Tools
+(`xcode-select --install`) and Swift 6.2 or later.
+
+Build and install from source:
 
 ```sh
 git clone https://github.com/gbvillarinho/celsius.git
 cd celsius
-scripts/build-app.sh --install
+scripts/build-app.sh --install    # build, ad-hoc sign, copy to /Applications and launch
 ```
 
-This builds a release binary, assembles and ad-hoc signs `Celsius.app`, copies it to `/Applications` and
-launches it. To build without installing, run `scripts/build-app.sh`. The app ends up in `build/Celsius.app`.
+Use `scripts/build-app.sh` without `--install` to only build `build/Celsius.app`. To install with the
+token already in the Keychain: `CELSIUS_PAT=thinqpat_your_token scripts/build-app.sh --install`.
 
-Because the app is only signed locally, macOS may complain the first time you open it. If so,
-right-click the app, choose **Open** and confirm.
-
-## Setup
-
-### 1. Create a token
-
-1. Go to [connect-pat.lgthinq.com](https://connect-pat.lgthinq.com) and sign in with your LG account.
-2. Create a new Personal Access Token and copy it (it starts with `thinqpat_`).
-
-### 2. Paste it into the app
-
-1. Open Celsius. With no token, the popover opens on **Settings**.
-2. Paste the token into the field and click **Connect**.
-3. The app finds your air conditioner and shows the controls.
-
-The token is stored only in the macOS login keychain (service `com.gabrielvillarinho.celsius`), readable
-only on this Mac while it is unlocked. It is never written to a file and is only sent to LG's API.
-
-### Install with the token (optional)
-
-```sh
-CELSIUS_PAT=thinqpat_your_token scripts/build-app.sh --install
-```
-
-The script saves the token in the keychain during installation.
-
-### If LG rejects the token
-
-The app shows "LG rejected this token". Create a new token on the portal and paste it again in Settings.
-
-## Development
+Build and test:
 
 ```sh
 swift build                           # debug build
@@ -82,7 +111,7 @@ Environment variables for running from the terminal:
 
 | Variable | Effect |
 | --- | --- |
-| `CELSIUS_PAT=<token>` | use this token instead of the keychain |
+| `CELSIUS_PAT=<token>` | use this token instead of the Keychain |
 | `CELSIUS_OPEN_ON_LAUNCH=1` | open the popover on launch |
 | `CELSIUS_LIVE_SNAPSHOT=<file.png>` | render the popover with live data once it loads |
 
@@ -92,16 +121,12 @@ To check UI changes without running the app, render the popover in fixed states 
 $(swift build --show-bin-path)/Celsius --snapshot <dir>
 ```
 
-See [CLAUDE.md](CLAUDE.md) for architecture details and conventions.
+Layout:
 
-## Project layout
-
-- `Sources/CelsiusCore`: API client, models, settings/keychain and the observable store (tested)
+- `Sources/CelsiusCore`: API client, models, settings/Keychain and the observable store (tested)
 - `Sources/Celsius`: the AppKit + SwiftUI app (status item, popover and views)
 - `Tests/CelsiusCoreTests`: Swift Testing suites; fixtures are real responses from the unit, with the device ID replaced
 
-## Limitations
-
-- The region is fixed to Brazil (`x-country: BR`, host `api-aic.lgthinq.com`). For another country, adjust `ThinQClient`.
-- Built and tested against a single air conditioner. Other models may expose different properties.
-- LG's cloud takes a few seconds to reflect a command. The app shows the new value right away and confirms it on the next poll.
+The app uses LG's official [ThinQ Connect API](https://connect-pat.lgthinq.com) with a Personal Access
+Token. The region is fixed to Brazil (`x-country: BR`, host `api-aic.lgthinq.com`); for another country,
+adjust `ThinQClient`. See [CLAUDE.md](CLAUDE.md) for architecture details and conventions.
