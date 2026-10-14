@@ -12,6 +12,8 @@ enum Theme {
     /// The accent color chosen in System Settings (or an ancestor's `.tint`), like native controls use.
     static let accent = Color.accentColor
     static let warning = Color.orange
+    /// Watts at which the power bar is full: about the most a 9,000 BTU inverter draws.
+    static let powerScale = 1000.0
 
     /// Accent for the power button, slider, airflow and glow, per job mode. Cooling, the default,
     /// follows the system accent; the other modes keep their own hue so they stay recognizable.
@@ -84,6 +86,29 @@ enum Labels {
         case ACMode.fan: "Fan only"
         default: mode(status.mode)
         }
+    }
+
+    /// "≈ 450 W", rounded to 10 W because the counter can't tell better.
+    static func power(_ reading: PowerReading?) -> String {
+        guard let watts = reading?.watts else { return "Measuring power…" }
+        return "≈ \(Int((watts / 10).rounded()) * 10) W"
+    }
+
+    /// What the figure covers: "0.08 kWh · 6 min since Eco on", or that it's still an estimate.
+    static func powerDetail(_ reading: PowerReading?, now: Date) -> String {
+        guard let reading else { return "Starts when the unit runs" }
+        let since = switch reading.restart {
+        case .started: "this session"
+        case .ecoOn: "since Eco on"
+        case .ecoOff: "since Eco off"
+        case .modeChanged: "since mode change"
+        }
+        guard reading.isMeasured else {
+            return reading.watts == nil ? "Measuring \(since)" : "Estimate · \(since)"
+        }
+        let minutes = max(0, Int(now.timeIntervalSince(reading.since) / 60))
+        let energy = String(format: "%.2f kWh", reading.energy)
+        return minutes == 0 ? "\(energy) \(since)" : "\(energy) · \(minutes) min \(since)"
     }
 
     static func temperature(_ value: Double?) -> String {

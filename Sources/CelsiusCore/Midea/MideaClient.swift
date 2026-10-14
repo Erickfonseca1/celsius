@@ -238,7 +238,11 @@ public struct MideaClient: ACClient {
         return { stored, _ in
             if let cached, cached.0 == stored { return MideaClient(session: cached.1) }
             guard let config = MideaConfig.parse(stored) else { return MideaClient(session: nil) }
-            let session = MideaSession(config: config, timerStore: SleepTimerStore(defaults: defaults, deviceID: config.deviceID))
+            let session = MideaSession(
+                config: config,
+                timerStore: SleepTimerStore(defaults: defaults, deviceID: config.deviceID),
+                historyStore: PowerHistoryStore(defaults: defaults, deviceID: config.deviceID)
+            )
             cached = (stored, session)
             return MideaClient(session: session)
         }
@@ -262,25 +266,56 @@ struct SleepTimerStore: Sendable {
     }
 }
 
+/// The last measured watts per setting, remembered between launches.
+struct PowerHistoryStore: Sendable {
+    var load: @Sendable () -> [String: Double]
+    var save: @Sendable ([String: Double]) -> Void
+
+    init(load: @escaping @Sendable () -> [String: Double], save: @escaping @Sendable ([String: Double]) -> Void) {
+        self.load = load
+        self.save = save
+    }
+
+    init(defaults: UserDefaults, deviceID: UInt64) {
+        let key = "midea.powerHistory.\(deviceID)"
+        nonisolated(unsafe) let defaults = defaults
+        self.init(load: { defaults.dictionary(forKey: key) as? [String: Double] ?? [:] }, save: { defaults.set($0, forKey: key) })
+    }
+
+    static let none = PowerHistoryStore(load: { [:] }, save: { _ in })
+}
+
 /// The connection plus the state that lives beside it: the last state read (set commands must echo
-/// every field) and the app-side sleep timer.
+/// every field), the power estimate and the app-side sleep timer.
 actor MideaSession {
     /// A deadline missed by more than this (the Mac was asleep) is dropped instead of acted on late.
     static let lateTimerGrace: TimeInterval = 15 * 60
+    /// How often the energy counter is read while the unit runs, whether or not the popover is open.
+    /// Steps of the counter are timed to within half of this.
+    static let energySampleInterval: Duration = .seconds(15)
 
     let config: MideaConfig
     private let connection: MideaConnection
     private let timerStore: SleepTimerStore
+    private let historyStore: PowerHistoryStore
     private let now: @Sendable () -> Date
     private var lastState: MideaState?
     private var sleepDeadline: Date?
     private var timerTask: Task<Void, Never>?
     private var timerRestored = false
+    private var estimator: PowerEstimator
+    private var power: PowerReading?
+    private var samplerTask: Task<Void, Never>?
 
-    init(config: MideaConfig, timerStore: SleepTimerStore, now: @escaping @Sendable () -> Date = Date.init) {
+    init(
+        config: MideaConfig, timerStore: SleepTimerStore, historyStore: PowerHistoryStore = .none,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         self.config = config
         self.connection = MideaConnection(config: config)
         self.timerStore = timerStore
+        self.historyStore = historyStore
+        self.estimator = PowerEstimator(history: historyStore.load())
         self.now = now
     }
 
@@ -289,7 +324,51 @@ actor MideaSession {
         let state = try await connection.state()
         lastState = state
         if !state.isOn, sleepDeadline != nil { setSleepDeadline(nil) }
-        return state.status(sleepMinutesLeft: sleepMinutesLeft)
+        await sampleEnergy(for: state)
+        var status = state.status(sleepMinutesLeft: sleepMinutesLeft)
+        status.power = state.isOn ? power : nil
+        return status
+    }
+
+    // MARK: Power
+
+    /// Reads the energy counter and feeds the estimate. A failed read only skips this sample.
+    private func sampleEnergy(for state: MideaState) async {
+        updateSampler(isOn: state.isOn)
+        guard state.isOn else {
+            power = estimator.record(at: now(), counter: 0, isOn: false, condition: Self.condition(state))
+            return
+        }
+        guard let counter = try? await connection.totalEnergy() else { return }
+        let before = estimator.history
+        power = estimator.record(at: now(), counter: counter, isOn: true, condition: Self.condition(state))
+        if estimator.history != before { historyStore.save(estimator.history) }
+    }
+
+    private static func condition(_ state: MideaState) -> PowerEstimator.Condition {
+        .init(eco: state.eco, mode: state.mode)
+    }
+
+    /// Keeps sampling while the unit runs, so steps are timed well even when nothing else polls.
+    private func updateSampler(isOn: Bool) {
+        if !isOn {
+            samplerTask?.cancel()
+            samplerTask = nil
+        } else if samplerTask == nil {
+            samplerTask = Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.energySampleInterval)
+                    guard !Task.isCancelled, let self else { return }
+                    await self.sampleOnce()
+                }
+            }
+        }
+    }
+
+    private func sampleOnce() async {
+        guard let state = try? await connection.state() else { return }
+        lastState = state
+        await sampleEnergy(for: state)
     }
 
     func send(_ command: ACCommand) async throws {
@@ -304,8 +383,11 @@ actor MideaSession {
         } else {
             current = try await connection.state()
         }
-        lastState = try await connection.apply(current.applying(command))
+        let applied = try await connection.apply(current.applying(command))
+        lastState = applied
         if case .power(false) = command { setSleepDeadline(nil) }
+        // Start a new measurement right when the setting changes, not at the next poll.
+        await sampleEnergy(for: applied)
     }
 
     var sleepMinutesLeft: Int? {

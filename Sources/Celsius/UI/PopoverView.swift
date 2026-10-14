@@ -202,6 +202,9 @@ struct PopoverView: View {
                     store.perform(.eco(status?.eco != true))
                 }
             }
+            if isOn, let power = status?.power {
+                PowerRow(reading: power, tint: Theme.modeColor(status?.mode), now: fixedDate ?? Date())
+            }
         }
         .disabled(!isOn)
         .opacity(isOn ? 1 : Theme.disabledOpacity)

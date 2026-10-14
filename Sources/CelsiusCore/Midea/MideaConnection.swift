@@ -32,13 +32,22 @@ actor MideaConnection {
 
     /// Reads the current state.
     func state() async throws -> MideaState {
-        try await exchange { Self.nextFrame(&$0, MideaFrame.getState) }
+        try await exchange(Self.parseState) { Self.nextFrame(&$0, MideaFrame.getState) }
     }
 
     /// Sends a set command for `state` and returns the state the unit reports back.
     func apply(_ state: MideaState) async throws -> MideaState {
         Self.log.info("Sending set command: on=\(state.isOn, privacy: .public) mode=\(state.mode, privacy: .public) eco=\(state.eco, privacy: .public)")
-        return try await exchange { Self.nextFrame(&$0) { state.setCommand(messageID: $0) } }
+        return try await exchange(Self.parseState) { Self.nextFrame(&$0) { state.setCommand(messageID: $0) } }
+    }
+
+    /// Reads the lifetime energy counter, in kWh.
+    func totalEnergy() async throws -> Double {
+        try await exchange(MideaFrame.totalEnergy(payload:)) { Self.nextFrame(&$0, MideaFrame.getEnergy) }
+    }
+
+    private static func parseState(_ payload: [UInt8]) -> MideaState? {
+        payload.first == MideaFrame.stateResponseID ? try? MideaState(payload: payload) : nil
     }
 
     private static func nextFrame(_ id: inout UInt8, _ make: (UInt8) -> [UInt8]) -> [UInt8] {
@@ -56,18 +65,19 @@ actor MideaConnection {
 
     // MARK: Exchange
 
-    private func exchange(_ makeFrame: (inout UInt8) -> [UInt8]) async throws -> MideaState {
+    /// Sends a frame and waits for the first response `parse` accepts.
+    private func exchange<T>(_ parse: ([UInt8]) -> T?, _ makeFrame: (inout UInt8) -> [UInt8]) async throws -> T {
         do {
-            return try await exchangeOnce(makeFrame(&messageID))
+            return try await exchangeOnce(makeFrame(&messageID), parse)
         } catch let error as MideaError where error != .crypto {
             if case .authentication = error { throw error }
             Self.log.info("Exchange failed (\(String(describing: error), privacy: .public)), reconnecting")
             disconnect()
-            return try await exchangeOnce(makeFrame(&messageID))
+            return try await exchangeOnce(makeFrame(&messageID), parse)
         }
     }
 
-    private func exchangeOnce(_ frame: [UInt8]) async throws -> MideaState {
+    private func exchangeOnce<T>(_ frame: [UInt8], _ parse: ([UInt8]) -> T?) async throws -> T {
         do {
             try await ensureSession()
             guard let sessionKey else { throw MideaError.connection("No session") }
@@ -77,9 +87,9 @@ actor MideaConnection {
             while true {
                 guard case .data(let packet) = try await readPacket(until: deadline) else { continue }
                 let payload = try MideaFrame.payload(of: try MideaPacketV2.decode(packet))
-                // Units also send unsolicited reports; wait for the state response.
                 Self.log.debug("Frame payload \(payload.map { String(format: "%02x", $0) }.joined(), privacy: .public)")
-                if payload.first == MideaFrame.stateResponseID { return try MideaState(payload: payload) }
+                // Units also send unsolicited reports; wait for the response asked for.
+                if let result = parse(payload) { return result }
             }
         } catch {
             disconnect()

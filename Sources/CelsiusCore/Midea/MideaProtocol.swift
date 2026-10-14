@@ -15,6 +15,9 @@ enum MideaFrame {
     static let headerLength = 10
     /// First payload byte of a state response.
     static let stateResponseID: UInt8 = 0xC0
+    /// First payload byte of a group data response; the group number is in the low bits of byte 3.
+    static let groupDataResponseID: UInt8 = 0xC1
+    static let energyGroup: UInt8 = 4
 
     static func checksum(_ bytes: some Sequence<UInt8>) -> UInt8 {
         let sum = bytes.reduce(0) { $0 &+ Int($1) }
@@ -39,6 +42,26 @@ enum MideaFrame {
         let body: [UInt8] = [0x41, 0x81, 0x00, 0xFF, 0x03, 0xFF, 0x00, 0x02]
             + [UInt8](repeating: 0, count: 12) + [0x03]
         return command(body, type: queryType, messageID: messageID)
+    }
+
+    /// Asks for group 4: the energy counters.
+    static func getEnergy(messageID: UInt8) -> [UInt8] {
+        var body = [UInt8](repeating: 0, count: 20)
+        body[0] = 0x41
+        body[1] = 0x21
+        body[2] = 0x01
+        body[3] = 0x40 | energyGroup
+        return command(body, type: queryType, messageID: messageID)
+    }
+
+    /// Lifetime energy in kWh from a group 4 response, BCD-encoded in bytes 4–7 with 0.01 kWh steps.
+    /// The unit also has fields for current-run energy and real-time power, but this model leaves them
+    /// at zero, so only the lifetime counter is used.
+    static func totalEnergy(payload p: [UInt8]) -> Double? {
+        guard p.count >= 8, p[0] == groupDataResponseID, p[3] & 0x0F == energyGroup else { return nil }
+        func bcd(_ byte: UInt8) -> Int { Int(byte >> 4) * 10 + Int(byte & 0x0F) }
+        let hundredths = bcd(p[4]) * 1_000_000 + bcd(p[5]) * 10_000 + bcd(p[6]) * 100 + bcd(p[7])
+        return Double(hundredths) / 100
     }
 
     /// The response payload (from the response ID up to, not including, the CRC), after checking the

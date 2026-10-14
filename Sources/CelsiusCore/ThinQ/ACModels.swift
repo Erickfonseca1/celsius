@@ -54,12 +54,15 @@ public struct ACStatus: Sendable, Equatable {
     /// Minutes until the sleep timer turns the unit off; `nil` when the timer is off.
     public var sleepMinutesLeft: Int?
     public var hasError: Bool
+    /// Estimated power draw, when the backend can tell (the Midea energy counter).
+    public var power: PowerReading?
 
     public init(
         isOn: Bool, mode: String? = nil, currentTemperature: Double? = nil,
         targetTemperature: Double? = nil, fanSpeed: String? = nil, swing: Bool? = nil,
-        eco: Bool? = nil, sleepMinutesLeft: Int? = nil, hasError: Bool = false
+        eco: Bool? = nil, sleepMinutesLeft: Int? = nil, hasError: Bool = false, power: PowerReading? = nil
     ) {
+        self.power = power
         self.isOn = isOn
         self.mode = mode
         self.currentTemperature = currentTemperature

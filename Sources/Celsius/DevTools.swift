@@ -16,11 +16,11 @@ enum DevTools {
         )
         let date = Date(timeIntervalSinceReferenceDate: 800_000_000)
         let scenarios: [(String, ACStatus?, ConnectionState)] = [
-            ("cool-on", ACStatus(isOn: true, mode: ACMode.cool, currentTemperature: 26, targetTemperature: 23, fanSpeed: "AUTO", swing: false, eco: false), .connected),
+            ("cool-on", ACStatus(isOn: true, mode: ACMode.cool, currentTemperature: 26, targetTemperature: 23, fanSpeed: "AUTO", swing: false, eco: true, power: PowerReading(watts: 447, isMeasured: true, energy: 0.08, since: date.addingTimeInterval(-11 * 60), restart: .ecoOn)), .connected),
             ("off", ACStatus(isOn: false, mode: ACMode.cool, currentTemperature: 26, targetTemperature: 23, fanSpeed: "AUTO", swing: false, eco: false), .connected),
             ("fan-high", ACStatus(isOn: true, mode: ACMode.fan, currentTemperature: 25, targetTemperature: 22, fanSpeed: "HIGH", swing: false, eco: false), .connected),
             ("dry-sleep", ACStatus(isOn: true, mode: ACMode.dry, currentTemperature: 24, targetTemperature: 24, fanSpeed: "LOW", swing: false, eco: false, sleepMinutesLeft: 95), .connected),
-            ("auto-swing", ACStatus(isOn: true, mode: ACMode.auto, currentTemperature: 27, targetTemperature: 23.5, fanSpeed: "MID", swing: true, eco: true), .connected),
+            ("auto-swing", ACStatus(isOn: true, mode: ACMode.auto, currentTemperature: 27, targetTemperature: 23.5, fanSpeed: "MID", swing: true, eco: true, power: PowerReading(watts: 520, isMeasured: false, energy: 0, since: date, restart: .ecoOn)), .connected),
             ("offline", ACStatus(isOn: true, mode: ACMode.cool, currentTemperature: 26, targetTemperature: 18, fanSpeed: "HIGH", swing: false, eco: false), .offline("The air conditioner is offline")),
             ("setup", nil, .needsSetup),
         ]
@@ -73,6 +73,20 @@ enum DevTools {
             let again = ContinuousClock.now
             _ = try await client.status(deviceID: device.id)
             print("Second read (same session) in \(ContinuousClock.now - again)")
+
+            // `--probe <minutes>` keeps reading, to watch the power estimate settle.
+            let arguments = CommandLine.arguments
+            if let index = arguments.firstIndex(of: "--probe"), arguments.indices.contains(index + 1),
+               let minutes = Double(arguments[index + 1]) {
+                let end = Date().addingTimeInterval(minutes * 60)
+                while Date() < end {
+                    try await Task.sleep(for: .seconds(15))
+                    let status = try await client.status(deviceID: device.id)
+                    let power = status.power
+                    print("\(Date().formatted(date: .omitted, time: .standard))  on=\(status.isOn) eco=\(status.eco == true) "
+                        + "\(Labels.power(power))  \(Labels.powerDetail(power, now: Date()))")
+                }
+            }
         } catch {
             print("Probe failed: \(error)")
         }

@@ -305,3 +305,130 @@ extension SleepTimerStore {
         }
     }
 }
+
+@Suite struct MideaEnergyTests {
+    @Test func energyQueryMatchesMsmart() throws {
+        let url = try #require(Bundle.module.url(forResource: "midea-vectors", withExtension: "json", subdirectory: "Fixtures"))
+        let json = try JSONDecoder().decode([String: JSONValue].self, from: Data(contentsOf: url))
+        let query = try #require(json["get_energy"]?.string)
+        #expect(MideaFrame.getEnergy(messageID: 0x11) == bytes(query))
+
+        // A real group 4 response: 605.59 kWh in BCD.
+        let frame = try #require(json["energy_frame"]?.string)
+        let payload = try MideaFrame.payload(of: bytes(frame))
+        #expect(MideaFrame.totalEnergy(payload: payload) == 605.59)
+        #expect(MideaFrame.totalEnergy(payload: [0xC0] + Array(repeating: 0, count: 20)) == nil)
+    }
+}
+
+/// Feeds the estimator the way the unit behaves: a 0.01 kWh counter read every 15 seconds.
+private struct Meter {
+    var estimator = PowerEstimator()
+    var date = Date(timeIntervalSinceReferenceDate: 800_000_000)
+    /// Exact energy used so far, in kWh; the unit reports it rounded down to 0.01.
+    var energy = 605.5937
+    var condition = PowerEstimator.Condition(eco: false, mode: MideaState.Mode.cool.rawValue)
+    var isOn = true
+
+    mutating func run(watts: Double, for seconds: TimeInterval, every interval: TimeInterval = 15) -> PowerReading? {
+        var reading: PowerReading?
+        var elapsed = 0.0
+        repeat {
+            reading = estimator.record(
+                at: date, counter: (energy * 100).rounded(.down) / 100, isOn: isOn, condition: condition
+            )
+            date += interval
+            energy += watts * interval / 3_600_000
+            elapsed += interval
+        } while elapsed < seconds
+        return reading
+    }
+}
+
+@Suite struct PowerEstimatorTests {
+    @Test(arguments: [450.0, 900.0, 250.0])
+    func measuresASteadyDraw(watts: Double) throws {
+        var meter = Meter()
+        let readingReading = meter.run(watts: watts, for: 20 * 60)
+        let reading = try #require(readingReading)
+        let measured = try #require(reading.watts)
+        #expect(reading.isMeasured)
+        #expect(abs(measured - watts) / watts < 0.06, "measured \(measured) W for \(watts) W")
+    }
+
+    @Test func nothingToShowRightAfterStartingWithoutHistory() throws {
+        var meter = Meter()
+        let readingReading = meter.run(watts: 450, for: 15)
+        let reading = try #require(readingReading)
+        #expect(reading.watts == nil)
+        #expect(reading.isMeasured == false)
+        #expect(reading.restart == .started)
+    }
+
+    @Test func ecoStartsTheMeasurementOverAndShowsWhatItLearnedBefore() throws {
+        var meter = Meter()
+        _ = meter.run(watts: 600, for: 15 * 60)
+
+        meter.condition.eco = true
+        let ecoStartReading = meter.run(watts: 350, for: 15)
+        let ecoStart = try #require(ecoStartReading)
+        #expect(ecoStart.restart == .ecoOn)
+        #expect(ecoStart.energy == 0)
+        #expect(ecoStart.watts == nil, "no Eco history yet")
+
+        let ecoMeasuredReading = meter.run(watts: 350, for: 25 * 60)
+
+        let ecoMeasured = try #require(ecoMeasuredReading)
+        #expect(abs(try #require(ecoMeasured.watts) - 350) < 25)
+
+        // Back to normal: the earlier normal-mode figure shows at once, marked as not measured yet.
+        meter.condition.eco = false
+        let backReading = meter.run(watts: 600, for: 15)
+        let back = try #require(backReading)
+        #expect(back.restart == .ecoOff)
+        #expect(back.isMeasured == false)
+        #expect(abs(try #require(back.watts) - 600) < 40)
+
+        // And Eco again: its own figure, not the blended one.
+        meter.condition.eco = true
+        let againReading = meter.run(watts: 350, for: 15)
+        let again = try #require(againReading)
+        #expect(abs(try #require(again.watts) - 350) < 25)
+    }
+
+    @Test func modeChangeStartsOver() throws {
+        var meter = Meter()
+        _ = meter.run(watts: 500, for: 5 * 60)
+        meter.condition.mode = MideaState.Mode.fan.rawValue
+        let reading = meter.run(watts: 30, for: 15)
+        #expect(reading?.restart == .modeChanged)
+    }
+
+    @Test func aQuietCounterBringsTheFigureDownQuickly() throws {
+        var meter = Meter()
+        _ = meter.run(watts: 600, for: 15 * 60)
+        // The compressor idles: almost nothing for ten minutes.
+        let idleReading = meter.run(watts: 5, for: 10 * 60)
+        let idle = try #require(idleReading)
+        #expect(try #require(idle.watts) <= 61)
+    }
+
+    @Test func countsEnergySinceTheRestart() throws {
+        var meter = Meter()
+        let readingReading = meter.run(watts: 600, for: 30 * 60)
+        let reading = try #require(readingReading)
+        // 0.3 kWh in half an hour at 600 W, give or take one counter step.
+        #expect(abs(reading.energy - 0.3) <= 0.011)
+    }
+
+    @Test func turningOffClearsTheReading() {
+        var meter = Meter()
+        _ = meter.run(watts: 600, for: 5 * 60)
+        meter.isOn = false
+        let reading = meter.run(watts: 0, for: 15)
+        #expect(reading == nil)
+        meter.isOn = true
+        let restarted = meter.run(watts: 600, for: 15)
+        #expect(restarted?.restart == .started)
+    }
+}
