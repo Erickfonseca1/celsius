@@ -11,6 +11,13 @@ struct CelsiusMain {
             DevTools.renderSnapshots(to: URL(fileURLWithPath: directory))
             return
         }
+        if arguments.contains("--probe") {
+            Task {
+                await DevTools.probe(settings: AppSettings())
+                exit(0)
+            }
+            RunLoop.main.run()
+        }
 
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -28,8 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-        let store = ACStore(settings: AppSettings(), updateChecker: version.map { UpdateChecker(currentVersion: $0) })
+        // Talks to the Midea unit on the LAN. The update check is off: upstream releases are the LG build.
+        let store = ACStore(settings: AppSettings(), makeClient: MideaClient.factory())
         let controller = StatusItemController(store: store)
         self.store = store
         self.controller = controller

@@ -41,11 +41,11 @@ struct FooterStatus: View {
         case .offline(let message):
             Indicator(icon: "wifi.slash", text: message, color: Theme.warning)
         case .unauthorized:
-            Indicator(icon: "key", text: "Sign in required", color: Theme.warning)
+            Indicator(icon: "key", text: "Token and key were refused", color: Theme.warning)
         case .deviceError:
             Indicator(icon: "exclamationmark.triangle", text: "The unit reports an error", color: Theme.warning)
         case .needsSetup:
-            Indicator(icon: "key", text: "Add your LG token")
+            Indicator(icon: "key", text: "Not set up")
         }
     }
 }

@@ -70,7 +70,7 @@ public final class ACStore {
     static let updateCheckInterval: TimeInterval = 24 * 60 * 60
 
     @ObservationIgnored private let settings: SettingsStorage
-    @ObservationIgnored private let makeClient: (String, String) -> ThinQClient
+    @ObservationIgnored private let makeClient: (String, String) -> any ACClient
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let isPreview: Bool
     @ObservationIgnored private let updateChecker: UpdateChecker?
@@ -94,7 +94,7 @@ public final class ACStore {
 
     public init(
         settings: SettingsStorage,
-        makeClient: @escaping (String, String) -> ThinQClient = { ThinQClient(token: $0, clientID: $1) },
+        makeClient: @escaping (String, String) -> any ACClient = { ThinQClient(token: $0, clientID: $1) },
         now: @escaping () -> Date = Date.init,
         updateChecker: UpdateChecker? = nil,
         sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) }
@@ -133,7 +133,7 @@ public final class ACStore {
         self.connection = connection
         self.device = ThinQDevice(
             deviceId: "preview",
-            deviceInfo: .init(deviceType: "DEVICE_AIR_CONDITIONER", modelName: "RAC_056905_WW", alias: "Ar-condicionado")
+            deviceInfo: .init(deviceType: "DEVICE_AIR_CONDITIONER", modelName: "Midea · 192.168.1.20", alias: "Ar-condicionado")
         )
     }
 
@@ -210,7 +210,7 @@ public final class ACStore {
         settings.token = token
         guard settings.token == token else {
             connection = .needsSetup
-            showMessage("Couldn't save the token in the keychain")
+            showMessage("Couldn't save the device details in the keychain")
             return
         }
         forgetDevice()
@@ -283,11 +283,11 @@ public final class ACStore {
         isReconnecting = false
     }
 
-    private func resolveDevice(_ client: ThinQClient) async throws -> String {
+    private func resolveDevice(_ client: any ACClient) async throws -> String {
         if let device, device.id == settings.deviceID { return device.id }
         let devices = try await client.devices().filter(\.isAirConditioner)
         guard let chosen = devices.first(where: { $0.id == settings.deviceID }) ?? devices.first else {
-            throw ThinQError.api(code: "", message: "No air conditioner found on this LG account")
+            throw ThinQError.api(code: "", message: "No air conditioner found")
         }
         device = chosen
         settings.deviceID = chosen.id

@@ -3,7 +3,7 @@ import Security
 
 /// Generic-password storage in the login keychain.
 public enum Keychain {
-    public static let service = "com.gabrielvillarinho.celsius"
+    public static let service = "com.erickfonseca.celsius"
 
     public static func read(_ account: String) -> String? {
         let query: [String: Any] = [
@@ -32,7 +32,7 @@ public enum Keychain {
         if status == errSecItemNotFound {
             var item = query
             item[kSecValueData as String] = data
-            item[kSecAttrLabel as String] = "Celsius – LG ThinQ token"
+            item[kSecAttrLabel as String] = "Celsius – Midea air conditioner"
             // Keep the token on this Mac: no iCloud Keychain sync, no backups.
             item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
@@ -60,16 +60,19 @@ public protocol SettingsStorage: AnyObject {
 
 public final class AppSettings: SettingsStorage {
     private let defaults: UserDefaults
-    private static let tokenAccount = "thinq-pat"
+    private static let tokenAccount = "midea-device"
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
-    /// `CELSIUS_PAT` overrides the keychain, for development runs from the terminal.
+    /// The unit's connection details (`MideaConfig` as JSON). `CELSIUS_MIDEA` overrides the keychain, for
+    /// development runs from the terminal: either the JSON itself or a path to a file holding it.
     public var token: String? {
         get {
-            if let env = ProcessInfo.processInfo.environment["CELSIUS_PAT"], !env.isEmpty { return env }
+            if let env = ProcessInfo.processInfo.environment["CELSIUS_MIDEA"], !env.isEmpty {
+                return (try? String(contentsOfFile: env, encoding: .utf8)) ?? env
+            }
             return Keychain.read(Self.tokenAccount)
         }
         set {

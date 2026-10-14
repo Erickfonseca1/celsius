@@ -12,8 +12,9 @@ struct SettingsView: View {
     @State private var isConnecting = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var configError: String?
 
-    private static let tokenPortal = URL(string: "https://connect-pat.lgthinq.com")!
+    private static let helpPage = URL(string: "https://github.com/mill1000/midea-msmart#discover")!
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -32,7 +33,7 @@ struct SettingsView: View {
                     .font(.system(size: 15, weight: .semibold))
             }
 
-            section("LG ThinQ") {
+            section("Midea") {
                 VStack(alignment: .leading, spacing: 10) {
                     if let device = store.device, store.hasToken {
                         HStack(spacing: 10) {
@@ -41,22 +42,24 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(device.displayName)
                                     .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
                                 Text(device.deviceInfo.modelName ?? "")
                                     .font(.system(size: 11))
                                     .foregroundStyle(Theme.secondaryText)
+                                    .lineLimit(1)
                             }
                             Spacer()
                             FooterStatus(store: store)
                         }
                     } else {
-                        Text("Paste a Personal Access Token from your LG account to connect to your air conditioner.")
+                        Text("Paste your air conditioner's details (IP, id, token and key) from msmart-ng to connect over your local network.")
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     HStack(spacing: 8) {
-                        SecureField(store.hasToken ? "Replace token" : "thinqpat_…", text: $token)
+                        SecureField(store.hasToken ? "Replace details" : "{'ip': …, 'id': …, 'token': …, 'key': …}", text: $token)
                             .textFieldStyle(.plain)
                             .font(.system(size: 12, design: .monospaced))
                             .padding(.horizontal, 10)
@@ -67,8 +70,8 @@ struct SettingsView: View {
                         Button(action: pasteToken) {
                             Image(systemName: "doc.on.clipboard")
                         }
-                        .help("Paste the token from the clipboard")
-                        .accessibilityLabel("Paste token")
+                        .help("Paste the device details from the clipboard")
+                        .accessibilityLabel("Paste device details")
                         .disabled(isConnecting)
                         Button(action: connect) {
                             if isConnecting {
@@ -80,14 +83,18 @@ struct SettingsView: View {
                         .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty || isConnecting)
                     }
 
-                    if case .unauthorized = store.connection {
-                        Label("LG rejected this token. Create a new one and paste it here.", systemImage: "exclamationmark.triangle")
+                    if let configError {
+                        Label(configError, systemImage: "exclamationmark.triangle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.warning)
+                    } else if case .unauthorized = store.connection {
+                        Label("The air conditioner refused this token and key. Get them again and paste them here.", systemImage: "exclamationmark.triangle")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.warning)
                     }
 
-                    Link(destination: Self.tokenPortal) {
-                        Label("Create a token at connect-pat.lgthinq.com", systemImage: "arrow.up.right.square")
+                    Link(destination: Self.helpPage) {
+                        Label("How to get the token and key with msmart-ng", systemImage: "arrow.up.right.square")
                             .font(.system(size: 12))
                     }
                     .foregroundStyle(Theme.accent)
@@ -205,9 +212,14 @@ struct SettingsView: View {
     private func connect() {
         let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, !isConnecting else { return }
+        guard let config = MideaConfig.parse(value) else {
+            configError = "Couldn't find the IP, id, token and key in this text."
+            return
+        }
+        configError = nil
         isConnecting = true
         Task {
-            await store.connect(token: value)
+            await store.connect(token: config.encoded)
             isConnecting = false
             if store.connection == .connected || store.connection == .deviceError {
                 token = ""

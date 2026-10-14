@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds Celsius.app into build/. Pass --install to copy it to /Applications, save the LG token
-# from $CELSIUS_PAT in the keychain (if set) and launch it.
+# Builds Celsius.app into build/. Pass --install to copy it to /Applications, save the Midea unit's
+# details from $CELSIUS_MIDEA (a JSON file or the JSON itself) in the keychain (if set) and launch it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -29,10 +29,12 @@ if [[ "${1:-}" == "--install" ]]; then
   pkill -x Celsius 2>/dev/null || true
   rm -rf /Applications/Celsius.app
   cp -R "$APP" /Applications/Celsius.app
-  if [[ -n "${CELSIUS_PAT:-}" ]]; then
-    security add-generic-password -U -s com.gabrielvillarinho.celsius -a thinq-pat \
-      -l "Celsius – LG ThinQ token" -w "$CELSIUS_PAT" -T /Applications/Celsius.app
-    echo "Saved the LG token in the keychain"
+  if [[ -n "${CELSIUS_MIDEA:-}" ]]; then
+    CONFIG="$CELSIUS_MIDEA"
+    [[ -f "$CONFIG" ]] && CONFIG="$(cat "$CONFIG")"
+    security add-generic-password -U -s com.erickfonseca.celsius -a midea-device \
+      -l "Celsius – Midea air conditioner" -w "$CONFIG" -T /Applications/Celsius.app
+    echo "Saved the air conditioner's details in the keychain"
   fi
   open /Applications/Celsius.app
   echo "Installed /Applications/Celsius.app"

@@ -1,0 +1,53 @@
+{
+ "state_frame": "aa22ac00000000000303c00028667f7f003c000000697100000000000000000069fa67",
+ "get_state": "aa21ac00000000000003418100ff03ff00020000000000000000000000000311f463",
+ "set_state": [
+  {
+   "params": {
+    "power_on": true,
+    "target_temperature": 23.0,
+    "operational_mode": 2,
+    "fan_speed": 102,
+    "swing_mode": 12,
+    "eco": false
+   },
+   "frame": "aa24ac00000000000002404347667f7f003c0000000000000000000000280000000021e794"
+  },
+  {
+   "params": {
+    "power_on": false,
+    "target_temperature": 24.5,
+    "operational_mode": 1,
+    "fan_speed": 40,
+    "swing_mode": 0,
+    "eco": true
+   },
+   "frame": "aa24ac00000000000002404238287f7f0030008000000000000000000028000000002157fe"
+  },
+  {
+   "params": {
+    "power_on": true,
+    "target_temperature": 16.0,
+    "operational_mode": 5,
+    "fan_speed": 80,
+    "swing_mode": 15,
+    "eco": false,
+    "sleep": true,
+    "turbo": true
+   },
+   "frame": "aa24ac000000000000024043a0507f7f003f200003000000000000000428000000002114fa"
+  }
+ ],
+ "v2_packet": "5a5a011168002000000000004b172b0d0e0a1a14d338110000000000000000000000000000000000578f04ba28cd2548c6a969040bb8b8c25deb73245510fc14bfa2775949deb92e2b1fa31ec42bd6d4ff448f9917e7e4a13c90f619f387626c0de7c7a36647565d",
+ "v2_frame": "aa22ac00000000000303c00028667f7f003c000000697100000000000000000069fa67",
+ "v3_handshake": {
+  "key": "054e4f903c196743e1c703072f65243e68fd1e640054efed2fbe166814315577",
+  "response": "c5f6f19f96aa97218d328336ce06812dbf9fa43c26ecb0d5be6ece0a318455b2097f8ff321396fe5768f66065f29edfdc7ea350712f1c6fc9daf337ec1ccc7ff",
+  "local_key": "20f1c18a1f8a96536cf0019c12907d0c5e3a4b102e9ddb889411bfda848c8981"
+ },
+ "v3_request": {
+  "packet_id": 5,
+  "data": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d",
+  "packet": "8370003e20069b0a368dd266b1628452b6942cfa1e348478e06ab4fec21f2231cdd7fb807f5500b9a7937e6dc363dc709bf2eb8aaf595d31ff1c8c8880361ace57d28e8c17ac"
+ }
+}

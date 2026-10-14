@@ -60,6 +60,24 @@ enum DevTools {
         print("Snapshots written to \(directory.path)")
     }
 
+    /// `Celsius --probe` reads the unit's state once through the saved config (or `CELSIUS_MIDEA`) and
+    /// prints it, to check the connection without the UI.
+    static func probe(settings: SettingsStorage) async {
+        let client = MideaClient.factory()(settings.token ?? "", settings.clientID)
+        do {
+            guard let device = try await client.devices().first else { return }
+            print("Device: \(device.displayName) (\(device.id))")
+            let start = ContinuousClock.now
+            let status = try await client.status(deviceID: device.id)
+            print("Status in \(ContinuousClock.now - start): \(status)")
+            let again = ContinuousClock.now
+            _ = try await client.status(deviceID: device.id)
+            print("Second read (same session) in \(ContinuousClock.now - again)")
+        } catch {
+            print("Probe failed: \(error)")
+        }
+    }
+
     /// Waits for the live store to load, then renders the popover with real data
     /// (`CELSIUS_LIVE_SNAPSHOT=<file.png>`).
     static func snapshotLive(store: ACStore, to url: URL) {

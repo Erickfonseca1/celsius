@@ -9,8 +9,13 @@
 [![Stars](https://img.shields.io/github/stars/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/stargazers)
 [![Last commit](https://img.shields.io/github/last-commit/gbvillarinho/celsius?style=flat-square)](https://github.com/gbvillarinho/celsius/commits/main)
 
-Control your LG air conditioner from the Mac menu bar. Click the icon, pick a temperature, mode or fan
+Control your air conditioner from the Mac menu bar. Click the icon, pick a temperature, mode or fan
 speed, and that's it. No phone needed.
+
+> **This is a fork for Midea / Springer Midea air conditioners.** It talks to the unit directly on your
+> local network (no cloud after setup), using the Midea LAN protocol ported from
+> [msmart-ng](https://github.com/mill1000/midea-msmart). It was built and tested with a Springer Midea
+> 42AFVCI09S5. The original [Celsius](https://github.com/gbvillarinho/celsius) controls LG ThinQ units.
 
 <p align="center">
   <img src="docs/demo.gif" alt="The Celsius popover in the macOS menu bar" width="560">
@@ -23,124 +28,71 @@ speed, and that's it. No phone needed.
 - Sets the temperature, with a range you choose
 - Sets the fan speed and the air swing
 - Turns Eco mode on and off
-- Sets a sleep timer that turns the unit off after a few hours
+- Sets a sleep timer that turns the unit off after a few hours (kept by the app: this unit ignores
+  timers sent over the network, so the Mac must be awake when the time comes)
 - Opens when you log in, if you want it to
 
 ## What you need
 
-- A Mac running macOS 15 or later
-- An LG air conditioner that already works in the LG ThinQ phone app
-- An LG account in Brazil (the app is set up for that region)
-
-## Install
-
-1. Go to the [Releases page](https://github.com/gbvillarinho/celsius/releases/latest).
-2. Download `Celsius.zip`.
-3. Double-click it to unzip, then drag Celsius into your Applications folder.
-4. Open Celsius. Its icon shows up in the menu bar.
-
-### Let an AI install it
-
-If you have an assistant that can run commands on your Mac, such as
-[Claude Code](https://claude.com/claude-code), copy this prompt into it. The same prompt works for
-updating, because it replaces any older copy.
-
-```text
-Install or update the Celsius menu bar app on this Mac.
-
-1. If Celsius is running, quit it (pkill -x Celsius).
-2. Download Celsius.zip from the latest release at
-   https://github.com/gbvillarinho/celsius/releases/latest
-   (for example: gh release download --repo gbvillarinho/celsius --pattern Celsius.zip)
-3. Unzip it and move Celsius.app into /Applications, replacing any older copy.
-4. Remove the quarantine flag so macOS opens it without a warning:
-   xattr -dr com.apple.quarantine /Applications/Celsius.app
-5. Open the app.
-
-If this is a first install, tell me to paste my LG access token in the Celsius Settings screen.
-Do not ask for my token and do not run anything else.
-```
-
-Don't give your LG token to the assistant. Paste it into the app yourself.
-
-### If macOS won't open the app
-
-The first time, macOS may say it can't verify the app. That happens with any app that isn't from the
-App Store. To open it anyway:
-
-1. Right-click Celsius in Applications and choose Open.
-2. Click Open in the window that appears.
-
-If you don't see that option, go to System Settings > Privacy & Security, scroll down, and click
-Open Anyway next to Celsius. You only have to do this once.
+- A Mac running macOS 15 or later, on the same network as the air conditioner
+- A Midea / Springer Midea air conditioner with Wi-Fi that already works in the MSmartHome app
+- The unit's token and key (see below)
 
 ## Connect your air conditioner
 
-Celsius needs a free access token from LG to talk to your air conditioner. It takes about a minute.
+Units with protocol V3 need a token and key that the Midea cloud hands out once. Get them with
+[msmart-ng](https://github.com/mill1000/midea-msmart), using the account from the MSmartHome app:
 
-### 1. Get a token
+```sh
+pip install msmart-ng
+msmart-ng discover --account you@example.com --password '…' <unit IP>
+```
 
-1. Open [connect-pat.lgthinq.com](https://connect-pat.lgthinq.com) and sign in with your LG account.
-2. Create a new token (LG calls it a Personal Access Token).
-3. Copy it. It starts with `thinqpat_`.
+If your account is from MSmartHome and the login fails with "password error", msmart-ng's `discover` is
+logging in to the NetHome Plus servers. Point it at the MSmartHome servers instead:
 
-### 2. Paste it into Celsius
+```sh
+python -c 'import sys, msmart.discover as d, msmart.cloud as c; d.NetHomePlusCloud = c.SmartHomeCloud; \
+from msmart.cli import main; sys.argv = ["msmart-ng"] + sys.argv[1:]; main()' \
+  discover --account you@example.com --password '…' <unit IP>
+```
 
-1. Click the Celsius icon in the menu bar. With no token yet, it opens on Settings.
-2. Paste the token (the clipboard button next to the field does it for you) and click Connect.
-3. Your air conditioner appears and you can control it.
+Copy the `Found device` line (`{'ip': …, 'id': …, 'token': …, 'key': …}`), click the Celsius icon, paste
+it in Settings and click Connect. The details are stored in your Mac's Keychain. Give the unit a fixed IP
+in your router so it doesn't move.
 
-The token is stored in your Mac's Keychain, on this Mac only. It is never written to a file and
-never sent anywhere except LG.
+The first time, macOS asks to let Celsius find devices on your local network. Click Allow.
+
+## Install
+
+This fork has no prebuilt release. Build it from source (you need the Command Line Tools,
+`xcode-select --install`):
+
+```sh
+git clone <this repository> celsius
+cd celsius
+scripts/build-app.sh --install
+```
+
+That builds the app, copies it to Applications and opens it. Its icon shows up in the menu bar.
 
 ## Updating
 
-Celsius checks for a new version about once a day. When there is one, a blue dot appears next to
-"Air conditioner settings..." in the popover. Open Settings and click "Update to X.Y.Z", which takes you
-to the download page. Download the zip and replace the app in Applications, the same as the first time.
-Your token stays in the Keychain.
-
-Or let an AI assistant do it. Paste this prompt into one that can run commands on your Mac, such as
-[Claude Code](https://claude.com/claude-code). It's the same prompt as the install one, and it replaces
-the old copy.
-
-```text
-Install or update the Celsius menu bar app on this Mac.
-
-1. If Celsius is running, quit it (pkill -x Celsius).
-2. Download Celsius.zip from the latest release at
-   https://github.com/gbvillarinho/celsius/releases/latest
-   (for example: gh release download --repo gbvillarinho/celsius --pattern Celsius.zip)
-3. Unzip it and move Celsius.app into /Applications, replacing any older copy.
-4. Remove the quarantine flag so macOS opens it without a warning:
-   xattr -dr com.apple.quarantine /Applications/Celsius.app
-5. Open the app.
-
-If this is a first install, tell me to paste my LG access token in the Celsius Settings screen.
-Do not ask for my token and do not run anything else.
-```
-
-macOS may ask for your Keychain password once after an update, so the new copy can read your token.
-Click Always Allow. If the app says it has no token, paste it again in Settings.
+The update check is off in this fork, because upstream releases are the LG build. Pull this repository
+and run `scripts/build-app.sh --install` again.
 
 ## Questions
 
-**"LG rejected this token."**
-The token is wrong or has expired. Create a new one on the LG page and paste it in Settings.
+**"Can't reach the air conditioner."**
+The Mac and the unit must be on the same network, and the unit's IP must not have changed. Check the IP
+in your router (or run `msmart-ng discover` again) and paste the new details in Settings.
 
-**Nothing changes right after I press a button.**
-LG's servers take a few seconds to confirm a change. Celsius shows the new value right away and checks
-it a moment later.
+**"The air conditioner refused this token and key."**
+Get them again with msmart-ng and paste them in Settings.
 
-**Does it work in other countries?**
-Not yet. It's set up for Brazil.
-
-**Does it work with any LG air conditioner?**
-It was built and tested with one model. Others should work, but some controls may be missing or behave
-differently.
-
-**How do I disconnect or switch accounts?**
-Open Settings in the app, click Sign out, then paste a new token.
+**Does it work with any Midea unit?**
+It was built and tested with one model (Springer Midea 42AFVCI09S5). Other Midea units with protocol V3
+should work, but some controls may be missing or behave differently.
 
 ---
 
@@ -158,7 +110,7 @@ scripts/build-app.sh --install    # build, ad-hoc sign, copy to /Applications an
 ```
 
 Use `scripts/build-app.sh` without `--install` to only build `build/Celsius.app`. To install with the
-token already in the Keychain: `CELSIUS_PAT=thinqpat_your_token scripts/build-app.sh --install`.
+unit's details already in the Keychain: `CELSIUS_MIDEA=path/to/midea.json scripts/build-app.sh --install`.
 
 Build and test:
 
@@ -175,7 +127,7 @@ Environment variables for running from the terminal:
 
 | Variable | Effect |
 | --- | --- |
-| `CELSIUS_PAT=<token>` | use this token instead of the Keychain |
+| `CELSIUS_MIDEA=<json or file>` | use these unit details instead of the Keychain |
 | `CELSIUS_OPEN_ON_LAUNCH=1` | open the popover on launch |
 | `CELSIUS_LIVE_SNAPSHOT=<file.png>` | render the popover with live data once it loads |
 
@@ -191,10 +143,10 @@ Layout:
 - `Sources/Celsius`: the AppKit + SwiftUI app (status item, popover and views)
 - `Tests/CelsiusCoreTests`: Swift Testing suites; fixtures are real responses from the unit, with the device ID replaced
 
-The app uses LG's official [ThinQ Connect API](https://connect-pat.lgthinq.com) with a Personal Access
-Token. The region is fixed to Brazil (`x-country: BR`, host `api-aic.lgthinq.com`); for another country,
-adjust `ThinQClient`. See [CLAUDE.md](CLAUDE.md) for architecture details and conventions.
+The app talks to the unit over the Midea LAN protocol (TCP port 6444, protocol V3). Run
+`$(swift build --show-bin-path)/Celsius --probe` to read the unit once from the terminal. See
+[CLAUDE.md](CLAUDE.md) for architecture details and conventions.
 
 ## License
 
-[MIT](LICENSE). Celsius is not affiliated with or endorsed by LG Electronics.
+[MIT](LICENSE). Celsius is not affiliated with or endorsed by LG Electronics, Midea or Springer.
