@@ -46,8 +46,10 @@ public final class ACStore {
     }
 
     public static let overrideLifetime: TimeInterval = 8
-    public static let visibleInterval: Duration = .seconds(20)
-    public static let backgroundInterval: Duration = .seconds(300)
+    /// Reads go straight to the unit on the LAN, so polling can be frequent: changes made with the
+    /// remote show up within these intervals.
+    public static let visibleInterval: Duration = .seconds(10)
+    public static let backgroundInterval: Duration = .seconds(60)
     /// How long the −/+ buttons wait for the value to settle before sending it.
     static let stepDebounce: Duration = .milliseconds(700)
     /// When to read the state back after a command, to confirm it (or recover from a failure).
