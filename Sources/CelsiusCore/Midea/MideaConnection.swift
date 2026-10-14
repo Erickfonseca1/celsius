@@ -25,6 +25,11 @@ actor MideaConnection {
     private var sessionStart: Date?
     private var packetID: UInt16 = 0
     private var messageID: UInt8 = 0
+    /// Exchanges suspend while they wait for the unit, and the actor would let another one start
+    /// meanwhile: both would read each other's responses and tear down each other's session. They
+    /// take turns instead.
+    private var isBusy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
 
     init(config: MideaConfig) {
         self.config = config
@@ -65,8 +70,31 @@ actor MideaConnection {
 
     // MARK: Exchange
 
-    /// Sends a frame and waits for the first response `parse` accepts.
+    /// Sends a frame and waits for the first response `parse` accepts, one exchange at a time.
     private func exchange<T>(_ parse: ([UInt8]) -> T?, _ makeFrame: (inout UInt8) -> [UInt8]) async throws -> T {
+        await takeTurn()
+        defer { endTurn() }
+        return try await exchangeWithRetry(parse, makeFrame)
+    }
+
+    private func takeTurn() async {
+        guard isBusy else {
+            isBusy = true
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    /// Hands the turn straight to the next waiter, so `isBusy` stays set between them.
+    private func endTurn() {
+        if waiting.isEmpty {
+            isBusy = false
+        } else {
+            waiting.removeFirst().resume()
+        }
+    }
+
+    private func exchangeWithRetry<T>(_ parse: ([UInt8]) -> T?, _ makeFrame: (inout UInt8) -> [UInt8]) async throws -> T {
         do {
             return try await exchangeOnce(makeFrame(&messageID), parse)
         } catch let error as MideaError where error != .crypto {
