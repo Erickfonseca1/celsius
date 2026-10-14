@@ -37,7 +37,8 @@ actor MideaConnection {
 
     /// Sends a set command for `state` and returns the state the unit reports back.
     func apply(_ state: MideaState) async throws -> MideaState {
-        try await exchange { Self.nextFrame(&$0) { state.setCommand(messageID: $0) } }
+        Self.log.info("Sending set command: on=\(state.isOn, privacy: .public) mode=\(state.mode, privacy: .public) eco=\(state.eco, privacy: .public)")
+        return try await exchange { Self.nextFrame(&$0) { state.setCommand(messageID: $0) } }
     }
 
     private static func nextFrame(_ id: inout UInt8, _ make: (UInt8) -> [UInt8]) -> [UInt8] {
@@ -77,6 +78,7 @@ actor MideaConnection {
                 guard case .data(let packet) = try await readPacket(until: deadline) else { continue }
                 let payload = try MideaFrame.payload(of: try MideaPacketV2.decode(packet))
                 // Units also send unsolicited reports; wait for the state response.
+                Self.log.debug("Frame payload \(payload.map { String(format: "%02x", $0) }.joined(), privacy: .public)")
                 if payload.first == MideaFrame.stateResponseID { return try MideaState(payload: payload) }
             }
         } catch {
